@@ -19,6 +19,11 @@ ATOMIC_FORCES_RE = re.compile(
     re.VERBOSE
 )
 
+FORCES_HEADER_RE = re.compile(
+    r"^\s*FORCES\|\s+Atomic\s+forces\s+\[.*\]\s*$",
+    re.MULTILINE
+)
+
 
 def parse_atomic_forces_list(output_file):
     atomic_forces_list = []
@@ -29,5 +34,33 @@ def parse_atomic_forces_list(output_file):
         atomic_forces_list.append(atomic_forces)
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
-    else:
-        return None
+
+    atomic_forces_list = []
+    lines = output_file.splitlines()
+    in_block = False
+    current = []
+    for line in lines:
+        if FORCES_HEADER_RE.match(line):
+            in_block = True
+            current = []
+            continue
+        if in_block:
+            if line.lstrip().startswith("FORCES|"):
+                parts = line.split()
+                if len(parts) >= 5 and parts[1].isdigit():
+                    current.append([parts[2], parts[3], parts[4]])
+                    continue
+                if parts[1] in ("Sum", "Total"):
+                    if current:
+                        atomic_forces_list.append(current)
+                    in_block = False
+            else:
+                if current:
+                    atomic_forces_list.append(current)
+                in_block = False
+
+    if in_block and current:
+        atomic_forces_list.append(current)
+    if atomic_forces_list:
+        return np.array(atomic_forces_list, dtype=float)
+    return None

@@ -1,0 +1,42 @@
+{
+    "run_type": "ENERGY_FORCE",
+    "version": 2025.2,
+    "pot_energy": [
+        -75.63501801634357
+    ],
+    "chemical_symbols": [
+        "Si",
+        "Si",
+        "Si",
+        "O",
+        "O",
+        "O",
+        "O"
+    ],
+    "chemical_symbols_fake": [
+        "Si",
+        "Si",
+        "Si",
+        "O",
+        "O",
+        "O",
+        "O"
+    ],
+    "atomic_kind": [
+        "Si",
+        "O"
+    ],
+    "atom_num": [
+        3,
+        4
+    ],
+    "atom_kinds_list": [
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2
+    ]
+}
