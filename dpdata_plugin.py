@@ -14,8 +14,8 @@ logger = get_logger(__name__)
 
 AU_TO_EV = EnergyConversion("hartree", "eV").value()
 AU_TO_ANG = LengthConversion("bohr", "angstrom").value()
-EV_ANG_m3_TO_GPa = PressureConversion("eV/angstrom^3", "GPa").value()
-EV_ANG_m3_TO_bar = PressureConversion("eV/angstrom^3", "bar").value()
+# EV_ANG_m3_TO_GPa = PressureConversion("eV/angstrom^3", "GPa").value()
+EV_ANG_m3_TO_Bar = PressureConversion("eV/angstrom^3", "bar").value()
 
 
 WRAPPER = "--- You are parsing data using package Cp2kData ---"
@@ -23,7 +23,6 @@ VIRIAL_WRN = (
     "Virial Parsing using cp2kdata as plug in for dpdata "
     "was not multiplied by volume before cp2kdata v0.6.4 "
     "please check the cp2kdata version and the virial.npy"
-    "!!! make sure that the cp2k output stress unit is bar"
     )
 
 
@@ -50,7 +49,11 @@ class CP2KEnergyForceFormat(Format):
             }
             return data
 
-        cp2k_e_f = Cp2kOutput(file_name)
+        path_prefix = "/".join(file_name.split("/")[:-1])
+        print(file_name)
+        print(file_name.split("/")[-1], path_prefix)
+        cp2k_e_f = Cp2kOutput(file_name.split("/")[-1], path_prefix=path_prefix)
+        # cp2k_e_f = Cp2kOutput(file_name)
 
         chemical_symbols = get_chemical_symbols_from_cp2kdata(
             cp2koutput=cp2k_e_f,
@@ -58,21 +61,39 @@ class CP2KEnergyForceFormat(Format):
         )
 
         # -- data dict collects information, and return to dpdata --
-
         data = {}
         data['atom_names'], data['atom_numbs'], data["atom_types"] = get_uniq_atom_names_and_types(
             chemical_symbols=chemical_symbols)
         # atom_numbs not total num of atoms!
         data['energies'] = cp2k_e_f.energies_list * AU_TO_EV
-        data['cells'] = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
-        data['coords'] = cp2k_e_f.init_atomic_coordinates[np.newaxis, :, :]
+        if "CELL_OPT" in cp2k_e_f.global_info.run_type:
+            cells = cp2k_e_f.get_all_cells()
+            data['cells'] = cells
+            if cp2k_e_f.atomic_frames_list is None:
+                raise ValueError("No atomic coordinates found in cp2k output, do you have *-pos-*.xyz file?")
+            else:
+                data['coords'] = cp2k_e_f.atomic_frames_list
+        elif "GEO_OPT" in cp2k_e_f.global_info.run_type:
+            if cp2k_e_f.atomic_frames_list is None:
+                raise ValueError("No atomic coordinates found in cp2k output, do you have *-pos-*.xyz file?")
+            else:
+                data['coords'] = cp2k_e_f.atomic_frames_list
+            num_frames = len( data['coords'])
+            cells = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
+            cells = np.repeat(cells, repeats=num_frames, axis=0)
+            data['cells'] = cells
+            print("Num of cells = ", len(data['cells']))
+        else:
+            data['cells'] = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
+            data['coords'] = cp2k_e_f.init_atomic_coordinates[np.newaxis, :, :]
         data['forces'] = cp2k_e_f.atomic_forces_list * AU_TO_EV/AU_TO_ANG
+        if "OPT" in cp2k_e_f.global_info.run_type:
+            assert cp2k_e_f.has_stress()
         if cp2k_e_f.has_stress():
             # note that virial = stress * volume
-            logger.warning(VIRIAL_WRN)
+            # logger.warning(VIRIAL_WRN)
             volume = np.linalg.det(data['cells'][0])
-            data['virials'] = cp2k_e_f.stress_tensor_list*volume/EV_ANG_m3_TO_bar
-
+            data['virials'] = cp2k_e_f.stress_tensor_list*volume/EV_ANG_m3_TO_Bar
         logger.debug(WRAPPER)
         return data
 
@@ -80,23 +101,21 @@ class CP2KEnergyForceFormat(Format):
 @Format.register("cp2k/aimd_output")
 @Format.register("cp2kdata/md")
 class CP2KMDFormat(Format):
-    def from_labeled_system(self, file_name, restart: bool=None, stride: int = 1, **kwargs):
+    def from_labeled_system(self, file_name, restart: bool=None, **kwargs):
 
         # -- Set Basic Parameters --
-        # path_prefix = file_name  # in cp2k md, file_name is directory name.
-        path_prefix = "/".join(file_name.split("/")[:-1])  # in cp2k md, file_name is directory name.
+        path_prefix = file_name  # in cp2k md, file_name is directory name.
         true_symbols = kwargs.get('true_symbols', False)
         cells = kwargs.get('cells', None)
-        # cp2k_output_name = kwargs.get('cp2k_output_name', None)
-        cp2k_output_name = file_name.split("/")[-1]
+        cp2k_output_name = kwargs.get('cp2k_output_name', None)
 
         # -- start parsing --
         logger.debug(WRAPPER)
-        print(path_prefix, cp2k_output_name)
+
         cp2kmd = Cp2kOutput(output_file=cp2k_output_name,
                             run_type="MD",
                             path_prefix=path_prefix,
-                            restart=restart, stride=stride)
+                            restart=restart)
 
         num_frames = cp2kmd.get_num_frames()
 
@@ -145,10 +164,11 @@ class CP2KMDFormat(Format):
             # the np.linalg.det() function can handle this and return (num_frames,)
             volumes = np.linalg.det(data['cells'])
             volumes = volumes[:, np.newaxis, np.newaxis]
-            data['virials'] = cp2kmd.stress_tensor_list*volumes/EV_ANG_m3_TO_bar
+            data['virials'] = cp2kmd.stress_tensor_list*volumes/EV_ANG_m3_TO_Bar
 
         logger.debug(WRAPPER)
         return data
+
 
 
 def get_chemical_symbols_from_cp2kdata(cp2koutput, true_symbols):

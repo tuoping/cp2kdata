@@ -1,82 +1,79 @@
 import regex as re
 import numpy as np
 
-# STRESS_RE = re.compile(
-#     r"""
-#     (\sSTRESS\sTENSOR\s\[GPa\]
-#     \n
-#     \s+X\s+Y\s+Z\s*\n
-#     \s+X
-#     \s+(?P<xx>[\s-]\d+\.\d+)
-#     \s+(?P<xy>[\s-]\d+\.\d+)
-#     \s+(?P<xz>[\s-]\d+\.\d+)\n
-#     \s+Y
-#     \s+(?P<yx>[\s-]\d+\.\d+)
-#     \s+(?P<yy>[\s-]\d+\.\d+)
-#     \s+(?P<yz>[\s-]\d+\.\d+)\n
-#     \s+Z
-#     \s+(?P<zx>[\s-]\d+\.\d+)
-#     \s+(?P<zy>[\s-]\d+\.\d+)
-#     \s+(?P<zz>[\s-]\d+\.\d+)\n
-#     |# or another pattern used in v8.1
-#     \s+STRESS\|\sAnalytical\sstress\stensor\s\[GPa\]\s*\n
-#     \s+STRESS\|\s+x\s+y\s+z\s*\n
-#     \s+STRESS\|\s+x
-#     \s+(?P<xx>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<xy>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<xz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
-#     \s+STRESS\|\s+y
-#     \s+(?P<yx>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<yy>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<yz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
-#     \s+STRESS\|\s+z
-#     \s+(?P<zx>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<zy>[\s-]\d+\.\d+E[\+\-]\d\d)
-#     \s+(?P<zz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
-#     )
-#     """,
-#     re.VERBOSE
-# )
+'''
+STRESS_RE = re.compile(
+    r"""
+    (?: # Match either GPa or bar format
+    # --- Original GPa format ---
+    \sSTRESS\sTENSOR\s\[GPa\]
+    \n
+    \s+X\s+Y\s+Z\s*\n
+    \s+X
+    \s+(?P<xx>[\s-]\d+\.\d+)
+    \s+(?P<xy>[\s-]\d+\.\d+)
+    \s+(?P<xz>[\s-]\d+\.\d+)\n
+    \s+Y
+    \s+(?P<yx>[\s-]\d+\.\d+)
+    \s+(?P<yy>[\s-]\d+\.\d+)
+    \s+(?P<yz>[\s-]\d+\.\d+)\n
+    \s+Z
+    \s+(?P<zx>[\s-]\d+\.\d+)
+    \s+(?P<zy>[\s-]\d+\.\d+)
+    \s+(?P<zz>[\s-]\d+\.\d+)\n
 
+    |
+
+    # --- Analytical stress tensor in bar ---
+    \s+STRESS\|\s+Analytical\sstress\stensor\s\[bar\]\s*\n
+    \s+STRESS\|\s+x\s+y\s+z\s*\n
+    \s+STRESS\|\s+x
+    \s+(?P<xx>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<xy>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<xz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
+    \s+STRESS\|\s+y
+    \s+(?P<yx>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<yy>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<yz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
+    \s+STRESS\|\s+z
+    \s+(?P<zx>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<zy>[\s-]\d+\.\d+E[\+\-]\d\d)
+    \s+(?P<zz>[\s-]\d+\.\d+E[\+\-]\d\d)\n
+    )
+    """,
+    re.VERBOSE
+)
+'''
 
 STRESS_RE = re.compile(
     r"""
-    (   # Old-style "STRESS TENSOR [GPa]" block
-        \sSTRESS\sTENSOR\s\[(?:GPa|bar)\]
-        \n
-        \s+X\s+Y\s+Z\s*\n
-        \s+X
-        \s+(?P<xx>-?\d+\.\d+)
-        \s+(?P<xy>-?\d+\.\d+)
-        \s+(?P<xz>-?\d+\.\d+)\n
-        \s+Y
-        \s+(?P<yx>-?\d+\.\d+)
-        \s+(?P<yy>-?\d+\.\d+)
-        \s+(?P<yz>-?\d+\.\d+)\n
-        \s+Z
-        \s+(?P<zx>-?\d+\.\d+)
-        \s+(?P<zy>-?\d+\.\d+)
-        \s+(?P<zz>-?\d+\.\d+)\n
-    |
-        # Analytical stress tensor: CP2K v8.1+ style
-        \s+STRESS\|\s+Analytical\sstress\stensor\s\[(?:GPa|bar)\]\s*\n
-        \s+STRESS\|\s+x\s+y\s+z\s*\n
-        \s+STRESS\|\s+x
-        \s+(?P<xx>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<xy>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<xz>-?\d+\.\d+E[+\-]\d+)\n
-        \s+STRESS\|\s+y
-        \s+(?P<yx>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<yy>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<yz>-?\d+\.\d+E[+\-]\d+)\n
-        \s+STRESS\|\s+z
-        \s+(?P<zx>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<zy>-?\d+\.\d+E[+\-]\d+)
-        \s+(?P<zz>-?\d+\.\d+E[+\-]\d+)\n
-    )
+    ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n
+    ^\s*STRESS\|\s+x\s+y\s+z\s*\r?\n
+    ^\s*STRESS\|\s+x\s+
+        (?P<xx>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<xy>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<xz>[-+]?\d+\.\d+E[-+]\d+)\s*\r?\n
+    ^\s*STRESS\|\s+y\s+
+        (?P<yx>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<yy>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<yz>[-+]?\d+\.\d+E[-+]\d+)\s*\r?\n
+    ^\s*STRESS\|\s+z\s+
+        (?P<zx>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<zy>[-+]?\d+\.\d+E[-+]\d+)\s+
+        (?P<zz>[-+]?\d+\.\d+E[-+]\d+)\s*\r?\n
+
+    [\s\S]*?
+
+    ^\s*\*{10,}\s*\r?\n
+    ^\s*\*{3}\s*BRENT\s*-\s*NUMBER\s+OF\s+ENERGY\s+EVALUATIONS\s*:\s*
+        (?P<n_eval>\d+)\s*\*{2,}\s*\r?\n
+    ^\s*\*{10,}\s*\r?\n
+    \r?\n
+    ^\s*OPT\|\s+\*+
     """,
-    re.VERBOSE,
+    re.VERBOSE | re.MULTILINE,
 )
+
 
 def parse_stress_tensor_list(output_file):
     stress_tensor_list = []
@@ -90,4 +87,5 @@ def parse_stress_tensor_list(output_file):
     if stress_tensor_list:
         return np.array(stress_tensor_list, dtype=float)
     else:
+        # raise Exception("stress not parsed")
         return None

@@ -1,19 +1,14 @@
 import regex as re
 import numpy as np
 
-# ENERGIES_RE = re.compile(
-#     r"""
-#     \sENERGY\|\sTotal\sFORCE_EVAL\s\(\sQS\s\)\senergy\s\S{6}:\s+(?P<energy>[\s-]\d+\.\d+)
-#     """,
-#     re.VERBOSE
-# )
 
+# ENERGIES_RE = re.compile(
+#     r"ENERGY\|\s*Total\sFORCE_EVAL\s\( QS \)\senergy\s\[hartree\]\s+(-?\d+\.\d+)"
+# )
 ENERGIES_RE = re.compile(
-    r"""
-    ^\s*ENERGY\|\s+Total\s+FORCE_EVAL\s+\(\s*QS\s*\)\s+energy\s+\[hartree\]\s+
-    (?P<energy>[-+]?\d+(?:\.\d+)?)
-    """,
-    re.VERBOSE,
+    r"ENERGY\|\s*Total\s+FORCE_EVAL\s+\(\s*QS\s*\)\s+energy\s+\[hartree\]\s+"
+    r"([-+]?\d*\.\d+(?:[Ee][-+]?\d+)?)"
+    r"\n\s*\n\s*FORCES\|\s*Atomic\s+forces\s+\[hartree/bohr\]"
 )
 
 
@@ -21,7 +16,7 @@ def parse_energies_list(output_file):
 
     energies_list = []
     for match in ENERGIES_RE.finditer(output_file):
-        energies_list.append(match["energy"])
+        energies_list.append(match.group(1))
     if energies_list:
         return np.array(energies_list, dtype=float)
     else:

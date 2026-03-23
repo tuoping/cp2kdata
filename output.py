@@ -35,14 +35,12 @@ class Cp2kOutput:
             run_type: str = None,
             path_prefix: str = ".",
             restart: bool = None,
-            stride: int=1,
             **kwargs
     ):
 
         # --set some basic information
         # self.required_information = kwargs
         self.path_prefix = path_prefix
-        self.stride = stride
 
         if output_file is None:
             self.filename = None
@@ -108,13 +106,14 @@ class Cp2kOutput:
         run_type_parser_candidates = {
             "ENERGY": self.parse_energy_force,
             "ENERGY_FORCE": self.parse_energy_force,
-            "GEO_OPT": self.parse_geo_opt,
+            "GEO_OPT": self.parse_cell_opt,
             "CELL_OPT": self.parse_cell_opt,
             "MD": self.parse_md,
             "VIBRATIONAL_ANALYSIS": self.parse_vibrational_analysis
         }
 
         # call corresponding parser for run types
+        print("Run type = ", self.global_info.run_type)
         parse_run_type = run_type_parser_candidates.get(
             self.global_info.run_type, None)
         if parse_run_type:
@@ -360,16 +359,33 @@ class Cp2kOutput:
 
         pos_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*pos*.xyz"))
-        if pos_xyz_file_list:
-            self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols = parse_pos_xyz(
-                pos_xyz_file_list[0])
-            self.energies_list = energies_list_from_pos
+        # if pos_xyz_file_list:
+        self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols = parse_pos_xyz(
+            pos_xyz_file_list[0])
+        self.energies_list = energies_list_from_pos
+        # else:
+        #     self.energies_list = parse_energies_list(self.output_file)
 
         self.all_cells = parse_all_cells(self.output_file)
         self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
         self.stress_tensor_list = parse_stress_tensor_list(self.output_file)
 
-        self.num_frames = len(self.energies_list)
+        print("Num of energies = ", len(self.energies_list))
+        print("Num of cells = ", len(self.all_cells))
+        print("Num of stress_tensor = ", len(self.stress_tensor_list))
+        print("Num of forces = ", len(self.atomic_forces_list))
+        if self.global_info.run_type == "CELL_OPT":
+            assert np.abs(len(self.all_cells) - len(self.energies_list)) < 2
+        assert np.abs(len(self.stress_tensor_list) - len(self.energies_list)) < 2
+        assert np.abs(len(self.atomic_forces_list) - len(self.energies_list)) < 2
+        self.num_frames = min([len(self.energies_list), len(self.stress_tensor_list), len(self.atomic_forces_list)])
+        print("Num of frames = ", self.num_frames)
+        self.energies_list = self.energies_list[:self.num_frames]
+        self.all_cells = self.all_cells[:self.num_frames]
+        self.stress_tensor_list = self.stress_tensor_list[:self.num_frames]
+        self.atomic_forces_list = self.atomic_forces_list[:self.num_frames]
+        self.atomic_frames_list = self.atomic_frames_list[:self.num_frames]
+        # raise RuntimeError
 
     def parse_md(self):
         self.md_info = parse_md_info(self.filename)
@@ -379,7 +395,6 @@ class Cp2kOutput:
         ener_file_list = glob.glob(os.path.join(self.path_prefix, "*.ener"))
         if ener_file_list:
             self.energies_list = parse_md_ener(ener_file_list[0])
-            self.energies_list = self.energies_list[::self.stride]
 
         # parse md poses
         pos_xyz_file_list = glob.glob(
@@ -408,6 +423,7 @@ class Cp2kOutput:
                 self.energies_list = self.drop_last_info(
                     self.cp2k_info, self.energies_list)
             self.atomic_frames_list = None
+
         frc_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*frc*.xyz"))
         if frc_xyz_file_list:
@@ -422,6 +438,7 @@ class Cp2kOutput:
 
             self.atomic_forces_list = self.drop_last_info(
                 self.cp2k_info, self.atomic_forces_list, info="forces")
+
         stress_file_list = glob.glob(
             os.path.join(self.path_prefix, "*.stress"))
         if stress_file_list:
@@ -446,7 +463,7 @@ class Cp2kOutput:
 
                 self.stress_tensor_list = self.drop_last_info(
                     self.cp2k_info, self.stress_tensor_list, info="stresses")
-        
+
         self.num_frames = len(self.energies_list)
 
         # here parse cell information
@@ -492,7 +509,7 @@ class Cp2kOutput:
                 self.all_cells = first_cell
                 self.all_cells = np.repeat(
                     self.all_cells, repeats=self.num_frames, axis=0)
-        
+
         elif (self.md_info.ensemble_type == "NPT_F"):
             if cell_file_list:
                 # all cells include initial cell

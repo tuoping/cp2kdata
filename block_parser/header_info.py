@@ -153,14 +153,9 @@ class MDInfo:
 
 
 # PATTERNS
-# MD_INFO_ENSEMBLE_TYPE_PATTERN = \
-#     r"""(?xm)
-#     ^\s(?:MD_PAR|MD)\|\sEnsemble\s(?:t|T)ype\s{39,60}(?P<ensemble_type>\w{3,16})
-#     """
-
 MD_INFO_ENSEMBLE_TYPE_PATTERN = \
     r"""(?xm)
-    ^\s*(?:MD_PAR|MD)\|\s*Ensemble\s+(?:t|T)ype\s+(?P<ensemble_type>\w{3,16})
+    ^\s(?:MD_PAR|MD)\|\sEnsemble\s(?:t|T)ype\s{39,60}(?P<ensemble_type>\w{3,16})
     """
 
 

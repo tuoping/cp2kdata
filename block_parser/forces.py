@@ -1,53 +1,108 @@
 import regex as re
 import numpy as np
 
-# ATOMIC_FORCES_RE = re.compile(
-#     r"""
-#     \sATOMIC\sFORCES\sin\s\[a\.u\.\]\s*\n
-#     \n
-#     \s\#.+\n
-#     (
-#         \s+(?P<atom>\d+)
-#         \s+(?P<kind>\d+)
-#         \s+(?P<element>\w+)
-#         \s+(?P<x>[\s-]\d+\.\d+)
-#         \s+(?P<y>[\s-]\d+\.\d+)
-#         \s+(?P<z>[\s-]\d+\.\d+)
-#         \n
-#     )+
-#     """,
-#     re.VERBOSE
-# )
-
-
-FLOAT_RE = r"[-+]?\d+(?:\.\d*)?(?:[Ee][-+]?\d+)?"
+'''
+ATOMIC_FORCES_RE = re.compile(
+    r"""
+    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\n     # block header
+    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\n               # column header
+    (
+        ^\s*FORCES\|\s+\d+\s+                                   # atom index
+        (?P<x>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+        (?P<y>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+        (?P<z>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+        [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*                  # |f| (ignored)
+        \n
+    )+                                                          # one or more atoms
+    """,
+    re.VERBOSE | re.MULTILINE
+)
+'''
 
 ATOMIC_FORCES_RE = re.compile(
-    rf"""
-    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\n
-    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\n
-    (?:
-        ^\s*FORCES\|\s+
-        (?P<atom>\d+)\s+                       # atom index
-        (?P<x>{FLOAT_RE})\s+                   # Fx
-        (?P<y>{FLOAT_RE})\s+                   # Fy
-        (?P<z>{FLOAT_RE})\s+                   # Fz
-        {FLOAT_RE}\s*                          # |f|, ignored
-        \n
-    )+
+    r"""
+    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\r?\n
+    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\r?\n
+
+    (?P<forces_block>
+        (?:
+            ^\s*FORCES\|\s+\d+\s+
+            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
+            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
+            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
+            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*
+            \r?\n
+        )+
+    )
+
+    ^\s*FORCES\|\s+Sum\s+
+    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
+    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
+    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
+
+    ^\s*FORCES\|\s+Total\s+atomic\s+force\s+
+    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
+
+    \r?\n
+    ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n
+    ^\s*STRESS\|\s+x\s+y\s+z\s*\r?\n
+    ^\s*STRESS\|\s+x\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
+    ^\s*STRESS\|\s+y\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
+    ^\s*STRESS\|\s+z\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s+
+    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
+
+    [\s\S]*?
+
+    ^\s*\*{10,}\s*\r?\n
+    ^\s*\*{3}\s*BRENT\s*-\s*NUMBER\s+OF\s+ENERGY\s+EVALUATIONS\s*:\s*
+    \d+\s*\*{2,}\s*\r?\n
+    ^\s*\*{10,}\s*\r?\n
+    \r?\n
+    ^\s*OPT\|\s+\*+
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+
+FORCE_LINE_RE = re.compile(
+    r"""
+    ^\s*FORCES\|\s+\d+\s+
+    (?P<x>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+    (?P<y>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+    (?P<z>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
+    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*$
     """,
     re.VERBOSE | re.MULTILINE,
 )
 
 
-def parse_atomic_forces_list(output_file):
+def parse_atomic_forces_list(output_file: str):
+    """
+    Parse one or more 'FORCES| Atomic forces [hartree/bohr]' blocks from a text blob.
+
+    Returns:
+        np.ndarray of shape (n_blocks, n_atoms, 3) with floats (x,y,z), or None if no blocks found.
+    """
     atomic_forces_list = []
-    for match in ATOMIC_FORCES_RE.finditer(output_file):
-        atomic_forces = []
-        for x, y, z in zip(*match.captures("x", "y", "z")):
-            atomic_forces.append([x, y, z])
-        atomic_forces_list.append(atomic_forces)
+    for block_match  in ATOMIC_FORCES_RE.finditer(output_file):
+        forces_block = block_match.group("forces_block")
+
+        forces = [
+            [float(line_match.group("x")),
+             float(line_match.group("y")),
+             float(line_match.group("z"))]
+            for line_match in FORCE_LINE_RE.finditer(forces_block)
+        ]
+        atomic_forces_list.append(forces)
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
     else:
         return None
+

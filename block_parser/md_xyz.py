@@ -2,9 +2,15 @@
 import regex as re
 import numpy as np
 from cp2kdata.utils import format_logger
+# ENERGY_RE = re.compile(
+#     r"""(?x)
+#     \sE\s=\s+(?P<energy>[\s-]\d+\.\d+)
+#     """
+# )
 ENERGY_RE = re.compile(
     r"""(?x)
-    \sE\s=\s+(?P<energy>[\s-]\d+\.\d+)
+    E \s* = \s*     # match 'E ='
+    (?P<energy> -? \d+ \.\d+ )   # capture the float (with optional minus)
     """
 )
 
@@ -29,8 +35,7 @@ def parse_pos_xyz(posxyz_file):
         positions = []
         natoms = int(lines.pop(0))
         match = ENERGY_RE.search(lines.pop(0))
-        if match is not None:
-            energies_list.append(match["energy"])
+        energies_list.append(match["energy"])
         for _ in range(natoms):
             line = lines.pop(0)
             symbol, x, y, z = line.split()[:4]
