@@ -6,12 +6,24 @@ from typing import List
 from .header_info import Cp2kInfo
 from ..units import au2A
 
+
+FLOAT = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?"
+
 ALL_CELL_RE = re.compile(
-    r"""
+    rf"""
+    ^\s*OPT\|\s*\*+\s*\r?\n
+    ^\s*OPT\|\s*Step\s+number\s*
+        (?P<step>\d+)\s*\r?\n
+
+    (?:
+        (?!^\s*OPT\|\s*\*+\s*\r?\n^\s*OPT\|\s*Step\s+number)
+        [\s\S]
+    )*?
+
     ^\s*OPT\|\s*Pressure\s+deviation\s+\[bar\]\s*
-        (?P<pressure_deviation>[-+]?\d+\.\d+)\s*\r?\n
+        (?P<pressure_deviation>{FLOAT})\s*\r?\n
     ^\s*OPT\|\s*Pressure\s+tolerance\s+\[bar\]\s*
-        (?P<pressure_tolerance>[-+]?\d+\.\d+)\s*\r?\n
+        (?P<pressure_tolerance>{FLOAT})\s*\r?\n
     ^\s*OPT\|\s*Pressure\s+is\s+converged\s*
         (?P<pressure_converged>YES|NO)\s*\r?\n
     ^\s*OPT\|\s*\*+\s*\r?\n
@@ -21,25 +33,25 @@ ALL_CELL_RE = re.compile(
     \s*\r?\n
 
     ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
-        (?P<volume>[-+]?\d+\.\d+)\s*\r?\n
+        (?P<volume>{FLOAT})\s*\r?\n
 
     ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
-        (?P<xx>[-+]?\d+\.\d+)\s+
-        (?P<xy>[-+]?\d+\.\d+)\s+
-        (?P<xz>[-+]?\d+\.\d+)\s+
-        \|a\|\s*=\s*\S+\s*\r?\n
+        (?P<xx>{FLOAT})\s+
+        (?P<xy>{FLOAT})\s+
+        (?P<xz>{FLOAT})\s+
+        \|a\|\s*=\s*{FLOAT}\s*\r?\n
 
     ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
-        (?P<yx>[-+]?\d+\.\d+)\s+
-        (?P<yy>[-+]?\d+\.\d+)\s+
-        (?P<yz>[-+]?\d+\.\d+)\s+
-        \|b\|\s*=\s*\S+\s*\r?\n
+        (?P<yx>{FLOAT})\s+
+        (?P<yy>{FLOAT})\s+
+        (?P<yz>{FLOAT})\s+
+        \|b\|\s*=\s*{FLOAT}\s*\r?\n
 
     ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
-        (?P<zx>[-+]?\d+\.\d+)\s+
-        (?P<zy>[-+]?\d+\.\d+)\s+
-        (?P<zz>[-+]?\d+\.\d+)\s+
-        \|c\|\s*=\s*\S+
+        (?P<zx>{FLOAT})\s+
+        (?P<zy>{FLOAT})\s+
+        (?P<zz>{FLOAT})\s+
+        \|c\|\s*=\s*{FLOAT}
     """,
     re.VERBOSE | re.MULTILINE,
 )
@@ -81,20 +93,23 @@ def parse_all_cells(output_file):
         ]
         init_cell = cell
         break
-    all_cells = [init_cell]
+    all_cells = [{
+        'step': 0,
+        'cell': np.array(init_cell, dtype=float)
+        }]
+
     for match in ALL_CELL_RE.finditer(output_file):
-        # print(match)
+        step = int(match.group("step"))
         cell = [
             [match["xx"], match["xy"], match["xz"]],
             [match["yx"], match["yy"], match["yz"]],
             [match["zx"], match["zy"], match["zz"]]
         ]
-        all_cells.append(cell)
-
-    if all_cells:
-        return np.array(all_cells, dtype=float)
-    else:
-        return None
+        all_cells.append({
+            'step': step,
+            'cell': np.array(cell, dtype=float)
+            })
+    return all_cells
 
 
 ALL_MD_CELL_RE_V7 = re.compile(

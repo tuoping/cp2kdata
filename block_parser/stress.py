@@ -1,6 +1,46 @@
 import regex as re
 import numpy as np
 
+FLOAT = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?"
+
+STATIC_STRESS_RE = re.compile(
+    rf"""
+    ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n
+    ^\s*STRESS\|\s+x\s+y\s+z\s*\r?\n
+    ^\s*STRESS\|\s+x\s+
+        (?P<xx>{FLOAT})\s+
+        (?P<xy>{FLOAT})\s+
+        (?P<xz>{FLOAT})\s*\r?\n
+    ^\s*STRESS\|\s+y\s+
+        (?P<yx>{FLOAT})\s+
+        (?P<yy>{FLOAT})\s+
+        (?P<yz>{FLOAT})\s*\r?\n
+    ^\s*STRESS\|\s+z\s+
+        (?P<zx>{FLOAT})\s+
+        (?P<zy>{FLOAT})\s+
+        (?P<zz>{FLOAT})\s*(?:\r?\n)?
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+
+
+def parse_stress_tensor_list_static(output_file):
+    stress_tensor_list = []
+    for match in STATIC_STRESS_RE.finditer(output_file):
+        stress_tensor = [
+            [match["xx"], match["xy"], match["xz"]],
+            [match["yx"], match["yy"], match["yz"]],
+            [match["zx"], match["zy"], match["zz"]]
+        ]
+        stress_tensor_list.append(stress_tensor)
+    if stress_tensor_list:
+        return np.array(stress_tensor_list, dtype=float)
+    else:
+        # raise Exception("stress not parsed")
+        return None
+
+
+
 STRESS_RE = re.compile(
     r"""
     ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n

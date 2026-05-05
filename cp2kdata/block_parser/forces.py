@@ -1,178 +1,66 @@
 import regex as re
 import numpy as np
-'''
+
 ATOMIC_FORCES_RE = re.compile(
     r"""
-    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\n     # block header
-    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\n               # column header
+    \sATOMIC\sFORCES\sin\s\[a\.u\.\]\s*\n
+    \n
+    \s\#.+\n
     (
-        ^\s*FORCES\|\s+\d+\s+                                   # atom index
-        (?P<x>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-        (?P<y>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-        (?P<z>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-        [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*                  # |f| (ignored)
+        \s+(?P<atom>\d+)
+        \s+(?P<kind>\d+)
+        \s+(?P<element>\w+)
+        \s+(?P<x>[\s-]\d+\.\d+)
+        \s+(?P<y>[\s-]\d+\.\d+)
+        \s+(?P<z>[\s-]\d+\.\d+)
         \n
-    )+                                                          # one or more atoms
+    )+
     """,
-    re.VERBOSE | re.MULTILINE
-)
-'''
-
-ATOMIC_FORCES_RE = re.compile(
-    r"""
-    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\r?\n
-    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\r?\n
-
-    (?P<forces_block>
-        (?:
-            ^\s*FORCES\|\s+\d+\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*
-            \r?\n
-        )+
-    )
-
-    ^\s*FORCES\|\s+Sum\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
-
-    ^\s*FORCES\|\s+Total\s+atomic\s+force\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
-
-    \r?\n
-    ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n
-    ^\s*STRESS\|\s+x\s+y\s+z\s*\r?\n
-    ^\s*STRESS\|\s+x\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-    ^\s*STRESS\|\s+y\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-    ^\s*STRESS\|\s+z\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-
-    [\s\S]*?
-
-    ^\s*\*{10,}\s*\r?\n
-    ^\s*\*{3}\s*BRENT\s*-\s*NUMBER\s+OF\s+ENERGY\s+EVALUATIONS\s*:\s*
-        (?P<n_eval>\d+)\s*\*{2,}\s*\r?\n
-    ^\s*\*{10,}\s*\r?\n
-    \r?\n
-
-    ^\s*OPT\|\s+\*+
-    """,
-    re.VERBOSE | re.MULTILINE,
+    re.VERBOSE
 )
 
-FORCE_LINE_RE = re.compile(
-    r"""
-    ^\s*FORCES\|\s+\d+\s+
-    (?P<x>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-    (?P<y>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-    (?P<z>[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*$
-    """,
-    re.VERBOSE | re.MULTILINE,
+FORCES_HEADER_RE = re.compile(
+    r"^\s*FORCES\|\s+Atomic\s+forces\s+\[.*\]\s*$",
+    re.MULTILINE
 )
 
 
-def parse_atomic_forces_list(output_file: str):
-    """
-    Parse one or more 'FORCES| Atomic forces [hartree/bohr]' blocks from a text blob.
-
-    Returns:
-        np.ndarray of shape (n_blocks, n_atoms, 3) with floats (x,y,z), or None if no blocks found.
-    """
+def parse_atomic_forces_list(output_file):
     atomic_forces_list = []
-    for block_match  in ATOMIC_FORCES_RE.finditer(output_file):
-        forces_block = block_match.group("forces_block")
-
-        forces = [
-            [float(line_match.group("x")),
-             float(line_match.group("y")),
-             float(line_match.group("z"))]
-            for line_match in FORCE_LINE_RE.finditer(forces_block)
-        ]
-        atomic_forces_list.append(forces)
+    for match in ATOMIC_FORCES_RE.finditer(output_file):
+        atomic_forces = []
+        for x, y, z in zip(*match.captures("x", "y", "z")):
+            atomic_forces.append([x, y, z])
+        atomic_forces_list.append(atomic_forces)
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
-    else:
-        return None
 
-
-MD_ATOMIC_FORCES_RE = re.compile(
-    r"""
-    ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\r?\n
-    ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\r?\n
-
-    (?P<forces_block>
-        (?:
-            ^\s*FORCES\|\s+\d+\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-            [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*
-            \r?\n
-        )+
-    )
-
-    ^\s*FORCES\|\s+Sum\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
-
-    ^\s*FORCES\|\s+Total\s+atomic\s+force\s+
-    [+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?\s*\r?\n
-
-    \r?\n
-    ^\s*STRESS\|\s+Analytical\s+stress\s+tensor\s+\[bar\]\s*\r?\n
-    ^\s*STRESS\|\s+x\s+y\s+z\s*\r?\n
-    ^\s*STRESS\|\s+x\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-    ^\s*STRESS\|\s+y\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-    ^\s*STRESS\|\s+z\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s+
-    [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
-
-    [\s\S]*?
-
-    ^\s*MD\|\s+\*+
-    """,
-    re.VERBOSE | re.MULTILINE,
-)
-
-def parse_atomic_forces_list_md(output_file: str):
-    """
-    Parse one or more 'FORCES| Atomic forces [hartree/bohr]' blocks from a text blob.
-
-    Returns:
-        np.ndarray of shape (n_blocks, n_atoms, 3) with floats (x,y,z), or None if no blocks found.
-    """
     atomic_forces_list = []
-    for block_match  in MD_ATOMIC_FORCES_RE.finditer(output_file):
-        forces_block = block_match.group("forces_block")
+    lines = output_file.splitlines()
+    in_block = False
+    current = []
+    for line in lines:
+        if FORCES_HEADER_RE.match(line):
+            in_block = True
+            current = []
+            continue
+        if in_block:
+            if line.lstrip().startswith("FORCES|"):
+                parts = line.split()
+                if len(parts) >= 5 and parts[1].isdigit():
+                    current.append([parts[2], parts[3], parts[4]])
+                    continue
+                if parts[1] in ("Sum", "Total"):
+                    if current:
+                        atomic_forces_list.append(current)
+                    in_block = False
+            else:
+                if current:
+                    atomic_forces_list.append(current)
+                in_block = False
 
-        forces = [
-            [float(line_match.group("x")),
-             float(line_match.group("y")),
-             float(line_match.group("z"))]
-            for line_match in FORCE_LINE_RE.finditer(forces_block)
-        ]
-        atomic_forces_list.append(forces)
+    if in_block and current:
+        atomic_forces_list.append(current)
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
-    else:
-        return None
+    return None

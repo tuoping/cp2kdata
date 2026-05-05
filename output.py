@@ -10,7 +10,7 @@ from cp2kdata.log import get_logger
 from cp2kdata.utils import format_logger
 from cp2kdata.block_parser.header_info import GlobalInfo, Cp2kInfo, DFTInfo
 from cp2kdata.block_parser.dft_plus_u import parse_dft_plus_u_occ
-from cp2kdata.block_parser.forces import parse_atomic_forces_list,parse_atomic_forces_list_md
+from cp2kdata.block_parser.forces import parse_atomic_forces_list, parse_atomic_forces_list_md, parse_atomic_forces_list_static
 from cp2kdata.block_parser.geo_opt import parse_geo_opt_info
 from cp2kdata.block_parser.optstep import parse_opt_step
 from cp2kdata.block_parser.header_info import parse_dft_info, parse_global_info, parse_cp2k_info, parse_md_info
@@ -20,7 +20,7 @@ from cp2kdata.block_parser.energies import parse_energies_list
 from cp2kdata.block_parser.coordinates import parse_init_atomic_coordinates
 from cp2kdata.block_parser.atomic_kind import parse_atomic_kinds
 from cp2kdata.block_parser.errors_handle import parse_errors
-from cp2kdata.block_parser.stress import parse_stress_tensor_list, parse_stress_tensor_list_md
+from cp2kdata.block_parser.stress import parse_stress_tensor_list, parse_stress_tensor_list_md, parse_stress_tensor_list_static
 from cp2kdata.block_parser.cells import parse_all_cells, parse_all_md_cells
 from cp2kdata.block_parser.md_xyz import parse_md_ener, parse_pos_xyz, parse_frc_xyz, parse_md_stress, parse_md_cell
 from cp2kdata.block_parser.vibration import parse_vibration_freq_list
@@ -186,7 +186,7 @@ class Cp2kOutput:
         return self.global_info.run_type
 
     def get_init_cell(self):
-        return self.all_cells[0]
+        return self.all_cells[0]['cell']
 
     def get_all_cells(self):
         return self.all_cells
@@ -339,8 +339,8 @@ class Cp2kOutput:
         self.energies_list = parse_energies_list(self.output_file)
 
         self.atomic_kind = parse_atomic_kinds(self.output_file)
-        self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
-        self.stress_tensor_list = parse_stress_tensor_list(self.output_file)
+        self.atomic_forces_list = parse_atomic_forces_list_static(self.output_file)
+        self.stress_tensor_list = parse_stress_tensor_list_static(self.output_file)
         print("Num of energies = ", len(self.energies_list))
         print("Num of cells = ", len(self.all_cells))
         print("Num of stress_tensor = ", len(self.stress_tensor_list))
@@ -394,12 +394,17 @@ class Cp2kOutput:
         self.all_cells = []
         idx_all_cells = 0
         for i in range(len(log_step_list)):
-            if idx_all_cells > len(all_cells):
-                raise Exception("Not enough cell read")
-            self.all_cells.append(all_cells[idx_all_cells])
-            if i != len(log_step_list) - 1:
-                if log_step_list[i]["has_pressure_deviation"] and log_step_list[i+1]["has_pressure_deviation"]:
-                    idx_all_cells += 1
+            self.all_cells.append(all_cells[idx_all_cells]['cell'])
+            if i == len(log_step_list)-1:
+                break
+            if log_step_list[i]["has_pressure_deviation"] and log_step_list[i+1]["has_pressure_deviation"]:
+                idx_all_cells += 1
+                if idx_all_cells == len(all_cells):
+                    assert log_step_list[i]['step'] == 1
+                    idx_all_cells -= 1
+                    continue
+                if log_step_list[i]['step'] != all_cells[idx_all_cells]['step']:
+                    raise Exception(f"{log_step_list[i]['step']}  !=  {all_cells[idx_all_cells]['step']}")
 
         self.atomic_frames_list = []
         self.energies_list = []

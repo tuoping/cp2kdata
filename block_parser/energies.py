@@ -5,7 +5,6 @@ import numpy as np
 # ENERGIES_RE = re.compile(
 #     r"ENERGY\|\s*Total\sFORCE_EVAL\s\( QS \)\senergy\s\[hartree\]\s+(-?\d+\.\d+)"
 # )
-
 ENERGIES_RE = re.compile(
     r"ENERGY\|\s*Total\s+FORCE_EVAL\s+\(\s*QS\s*\)\s+energy\s+\[hartree\]\s+"
     r"(?P<energy>[-+]?\d+(?:\.\d*)?(?:[Ee][-+]?\d+)?)"

@@ -6,147 +6,46 @@ from typing import List
 from .header_info import Cp2kInfo
 from ..units import au2A
 
-# ALL_CELL_RE = re.compile(
-#     r"""
-#     ^\s*OPT\|\s*Pressure\s+deviation\s+\[bar\]\s*
-#         (?P<pressure_deviation>[-+]?\d+\.\d+)\s*\r?\n
-#     ^\s*OPT\|\s*Pressure\s+tolerance\s+\[bar\]\s*
-#         (?P<pressure_tolerance>[-+]?\d+\.\d+)\s*\r?\n
-#     ^\s*OPT\|\s*Pressure\s+is\s+converged\s*
-#         (?P<pressure_converged>YES|NO)\s*\r?\n
-#     ^\s*OPT\|\s*\*+\s*\r?\n
-#     ^\s*OPT\|\s*Estimated\s+peak\s+process\s+memory\s+after\s+this\s+step\s+\[MiB\]\s*
-#         (?P<memory_mib>\d+)\s*\r?\n
-# 
-#     \s*\r?\n
-# 
-#     ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
-#         (?P<volume>[-+]?\d+\.\d+)\s*\r?\n
-# 
-#     ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
-#         (?P<xx>[-+]?\d+\.\d+)\s+
-#         (?P<xy>[-+]?\d+\.\d+)\s+
-#         (?P<xz>[-+]?\d+\.\d+)\s+
-#         \|a\|\s*=\s*\S+\s*\r?\n
-# 
-#     ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
-#         (?P<yx>[-+]?\d+\.\d+)\s+
-#         (?P<yy>[-+]?\d+\.\d+)\s+
-#         (?P<yz>[-+]?\d+\.\d+)\s+
-#         \|b\|\s*=\s*\S+\s*\r?\n
-# 
-#     ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
-#         (?P<zx>[-+]?\d+\.\d+)\s+
-#         (?P<zy>[-+]?\d+\.\d+)\s+
-#         (?P<zz>[-+]?\d+\.\d+)\s+
-#         \|c\|\s*=\s*\S+
-#     """,
-#     re.VERBOSE | re.MULTILINE,
-# )
-
-FLOAT = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?"
-
 ALL_CELL_RE = re.compile(
-    rf"""
-    ^\s*OPT\|\s*\*+\s*\r?\n
-    ^\s*OPT\|\s*Step\s+number\s*
-        (?P<step>\d+)\s*\r?\n
-
-    (?:
-        (?!^\s*OPT\|\s*\*+\s*\r?\n^\s*OPT\|\s*Step\s+number)
-        [\s\S]
-    )*?
-
-    ^\s*OPT\|\s*Pressure\s+deviation\s+\[bar\]\s*
-        (?P<pressure_deviation>{FLOAT})\s*\r?\n
-    ^\s*OPT\|\s*Pressure\s+tolerance\s+\[bar\]\s*
-        (?P<pressure_tolerance>{FLOAT})\s*\r?\n
-    ^\s*OPT\|\s*Pressure\s+is\s+converged\s*
-        (?P<pressure_converged>YES|NO)\s*\r?\n
-    ^\s*OPT\|\s*\*+\s*\r?\n
-    ^\s*OPT\|\s*Estimated\s+peak\s+process\s+memory\s+after\s+this\s+step\s+\[MiB\]\s*
-        (?P<memory_mib>\d+)\s*\r?\n
-
-    \s*\r?\n
-
-    ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
-        (?P<volume>{FLOAT})\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
-        (?P<xx>{FLOAT})\s+
-        (?P<xy>{FLOAT})\s+
-        (?P<xz>{FLOAT})\s+
-        \|a\|\s*=\s*{FLOAT}\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
-        (?P<yx>{FLOAT})\s+
-        (?P<yy>{FLOAT})\s+
-        (?P<yz>{FLOAT})\s+
-        \|b\|\s*=\s*{FLOAT}\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
-        (?P<zx>{FLOAT})\s+
-        (?P<zy>{FLOAT})\s+
-        (?P<zz>{FLOAT})\s+
-        \|c\|\s*=\s*{FLOAT}
-    """,
-    re.VERBOSE | re.MULTILINE,
-)
-
-
-INIT_CELL_RE = re.compile(
     r"""
-    ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
-        (?P<volume>[-+]?\d+\.\d+)\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
-        (?P<xx>[-+]?\d+\.\d+)\s+
-        (?P<xy>[-+]?\d+\.\d+)\s+
-        (?P<xz>[-+]?\d+\.\d+)\s+
-        \|a\|\s*=\s*\S+\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
-        (?P<yx>[-+]?\d+\.\d+)\s+
-        (?P<yy>[-+]?\d+\.\d+)\s+
-        (?P<yz>[-+]?\d+\.\d+)\s+
-        \|b\|\s*=\s*\S+\s*\r?\n
-
-    ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
-        (?P<zx>[-+]?\d+\.\d+)\s+
-        (?P<zy>[-+]?\d+\.\d+)\s+
-        (?P<zz>[-+]?\d+\.\d+)\s+
-        \|c\|\s*=\s*\S+
+    \s+CELL\|\sVector\sa\s\[angstrom\]:
+    \s+(?P<xx>[\s-]\d+\.\d+)
+    \s+(?P<xy>[\s-]\d+\.\d+)
+    \s+(?P<xz>[\s-]\d+\.\d+)
+    \s+\|a\|\s+=\s+\S+
+    \n
+    \s+CELL\|\sVector\sb\s\[angstrom\]:
+    \s+(?P<yx>[\s-]\d+\.\d+)
+    \s+(?P<yy>[\s-]\d+\.\d+)
+    \s+(?P<yz>[\s-]\d+\.\d+)
+    \s+\|b\|\s+=\s+\S+
+    \n
+    \s+CELL\|\sVector\sc\s\[angstrom\]:
+    \s+(?P<zx>[\s-]\d+\.\d+)
+    \s+(?P<zy>[\s-]\d+\.\d+)
+    \s+(?P<zz>[\s-]\d+\.\d+)
+    \s+\|c\|\s+=\s+\S+
+    \n
     """,
-    re.VERBOSE | re.MULTILINE,
+    re.VERBOSE
 )
 
 
 def parse_all_cells(output_file):
-    for match in INIT_CELL_RE.finditer(output_file):
-        cell = [
-            [match["xx"], match["xy"], match["xz"]],
-            [match["yx"], match["yy"], match["yz"]],
-            [match["zx"], match["zy"], match["zz"]]
-        ]
-        init_cell = cell
-        break
-    all_cells = [{
-        'step': 0,
-        'cell': np.array(init_cell, dtype=float)
-        }]
-
+    all_cells = []
     for match in ALL_CELL_RE.finditer(output_file):
-        step = int(match.group("step"))
+        # print(match)
         cell = [
             [match["xx"], match["xy"], match["xz"]],
             [match["yx"], match["yy"], match["yz"]],
             [match["zx"], match["zy"], match["zz"]]
         ]
-        all_cells.append({
-            'step': step,
-            'cell': np.array(cell, dtype=float)
-            })
-    return all_cells
+        all_cells.append(cell)
+
+    if all_cells:
+        return np.array(all_cells, dtype=float)
+    else:
+        return None
 
 
 ALL_MD_CELL_RE_V7 = re.compile(
@@ -196,7 +95,7 @@ def parse_all_md_cells(output_file: List[str],
     # notice that the cell of step 0 is excluded from MD| block
 
     # choose parser according to cp2k_info.version
-    if cp2k_info.version in ['9.1', '2022.2', '2023.1', '2023.2', '2024.1']:
+    if cp2k_info.version in ['9.1', '2022.2', '2023.1', '2023.2', '2024.1', '2024.2', '2025.1', '2025.2']:
         ALL_MD_CELL_RE = ALL_MD_CELL_RE_V2023
     elif cp2k_info.version in ['7.1']:
         ALL_MD_CELL_RE = ALL_MD_CELL_RE_V7
