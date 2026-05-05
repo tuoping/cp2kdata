@@ -450,7 +450,7 @@ class Cp2kOutput:
         # parse md energies
         ener_file_list = glob.glob(os.path.join(self.path_prefix, "*.ener"))
         if ener_file_list:
-            self.energies_list = parse_md_ener(ener_file_list[0])
+            energies_list_from_ener, energies_step_list = parse_md_ener(ener_file_list[0])
 
         # parse md poses
         pos_xyz_file_list = glob.glob(
@@ -468,11 +468,13 @@ class Cp2kOutput:
             self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols, _, self.all_cells = parse_pos_xyz_md(
                 pos_xyz_file_list[0])
 
-            if not hasattr(self, "energies_list"):
+            # if not hasattr(self, "energies_list"):
+            if not ener_file_list:
                 self.energies_list = energies_list_from_pos
         else:
             # if no pos file and ener file, parse energies from the output file
-            if not hasattr(self, "energies_list"):
+            # if not hasattr(self, "energies_list"):
+            if not ener_file_list:
                 format_logger(info="Energies", filename=self.filename)
                 self.energies_list = parse_energies_list(self.output_file)
                 self.energies_list = self.drop_last_info(
@@ -482,13 +484,23 @@ class Cp2kOutput:
         frc_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*frc*.xyz"))
         if frc_xyz_file_list:
-            self.atomic_forces_list = parse_frc_xyz(frc_xyz_file_list[0])
+            self.atomic_forces_list, forces_step_list = parse_frc_xyz(frc_xyz_file_list[0])
+            if ener_file_list:
+                self.energies_list = []
+                idx_force_step = 0
+                for i in range(len(energies_step_list)):
+                    if int(energies_step_list[i]) == int(forces_step_list[idx_force_step]):
+                        self.energies_list.append(energies_list_from_ener[i])
+                        idx_force_step += 1
+                    if idx_force_step == len(forces_step_list):
+                        break
+                self.energies_list = np.array(self.energies_list)
         else:
             format_logger(info="Forces", filename=self.filename)
             self.atomic_forces_list = parse_atomic_forces_list_md(
                 self.output_file)
-        self.atomic_forces_list = self.drop_first_info(
-            self.cp2k_info, self.atomic_forces_list, info="forces")
+        # self.atomic_forces_list = self.drop_first_info(
+        #     self.cp2k_info, self.atomic_forces_list, info="forces")
         
         self.atomic_forces_list = self.drop_last_info(
             self.cp2k_info, self.atomic_forces_list, info="forces")
@@ -511,14 +523,13 @@ class Cp2kOutput:
             self.output_file)
 
         # stress tensor could be None if the output file doesn't contain stress information
-        # if self.stress_tensor_list is not None:
-        #     self.stress_tensor_list = self.drop_first_info(
-        #         self.cp2k_info, self.stress_tensor_list, info="stresses")
-        # 
-        #     self.stress_tensor_list = self.drop_last_info(
-        #         self.cp2k_info, self.stress_tensor_list, info="stresses")
+        if self.stress_tensor_list is not None:
+            self.stress_tensor_list = self.drop_first_info(
+                self.cp2k_info, self.stress_tensor_list, info="stresses")
+        
+            self.stress_tensor_list = self.drop_last_info(
+                self.cp2k_info, self.stress_tensor_list, info="stresses")
 
-        self.energies_list = self.energies_list[::self.stride]
         self.num_frames = len(self.energies_list)
 
         # here parse cell information
@@ -584,7 +595,11 @@ class Cp2kOutput:
                 logger.warning(WARNING_MSG_PARSE_CELL_FROM_OUTPUT)
 
                 self.organize_md_cell()
-
+        print("Num of frames (energies)", self.num_frames)
+        print("Num of cells", len(self.all_cells))
+        print("Num of frames", len(self.atomic_frames_list))
+        print("Num of forces", len(self.atomic_forces_list))
+        print("Num of stresses", len(self.stress_tensor_list))
         self.init_atomic_coordinates, self.atom_kind_list, self.chemical_symbols = parse_init_atomic_coordinates(
             self.output_file)
         self.atomic_kind = parse_atomic_kinds(self.output_file)

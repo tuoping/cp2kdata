@@ -111,7 +111,6 @@ class CP2KMDFormat(Format):
         # cp2k_e_f = Cp2kOutput(file_name)
 
         num_frames = cp2kmd.get_num_frames()
-
         chemical_symbols = get_chemical_symbols_from_cp2kdata(
             cp2koutput=cp2kmd,
             true_symbols=true_symbols

@@ -19,7 +19,8 @@ def parse_md_ener(ener_file):
     format_logger(info="Energies", filename=ener_file)
     #print(f"Parsing Energies from {ener_file}")
     energies_list = np.loadtxt(ener_file, usecols=4, ndmin=1, dtype=np.float64)
-    return energies_list
+    step_list = np.loadtxt(ener_file, usecols=0, ndmin=1, dtype=np.float64)
+    return energies_list, step_list
 
 FLOAT = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][+-]?\d+)?"
 
@@ -105,17 +106,34 @@ def parse_pos_xyz(posxyz_file):
     return pos_list, energies_list, chemical_symbols, step_list
 
 
+FRC_RE = re.compile(
+    r"""(?x)
+    i \s* = \s*
+    (?P<i> \d+ )
+    \s* , \s*
+    time \s* = \s*
+    (?P<time> [-+]? \d+ (?: \. \d+ )? (?: [EeDd] [-+]? \d+ )? )
+    \s* , \s*
+    E \s* = \s*
+    (?P<energy> [-+]? \d+ (?: \. \d+ )? (?: [EeDd] [-+]? \d+ )? )
+    """
+)
+
 def parse_frc_xyz(frcxyz_file):
     format_logger(info="Forces", filename=frcxyz_file)
     #print(f"Parsing Froces from {frcxyz_file}")
     fp = open(frcxyz_file, "r")
     lines = fp.readlines()
     force_list = []
+    step_list = []
     while len(lines) > 0:
         symbols = []
         positions = []
         natoms = int(lines.pop(0))
-        lines.pop(0)
+        second_line = lines.pop(0)
+        match = FRC_RE.search(second_line)
+        if match is not None:
+            step_list.append(int(match["i"]))
         for _ in range(natoms):
             line = lines.pop(0)
             symbol, x, y, z = line.split()[:4]
@@ -124,7 +142,7 @@ def parse_frc_xyz(frcxyz_file):
             positions.append([float(x), float(y), float(z)])
         force_list.append(positions)
     force_list = np.array(force_list, dtype=np.float64)
-    return force_list
+    return force_list, step_list
 
 # NOTE: incomplete function, do not release!
 
