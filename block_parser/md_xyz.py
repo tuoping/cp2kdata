@@ -2,18 +2,23 @@
 import regex as re
 import numpy as np
 from cp2kdata.utils import format_logger
+
 # ENERGY_RE = re.compile(
 #     r"""(?x)
-#     \sE\s=\s+(?P<energy>[\s-]\d+\.\d+)
+#     E \s* = \s*     # match 'E ='
+#     (?P<energy> -? \d+ \.\d+ )   # capture the float (with optional minus)
 #     """
 # )
+
 ENERGY_RE = re.compile(
     r"""(?x)
-    E \s* = \s*     # match 'E ='
-    (?P<energy> -? \d+ \.\d+ )   # capture the float (with optional minus)
+    i \s* = \s*
+    (?P<i> \d+ )
+    \s* , \s*
+    E \s* = \s*
+    (?P<energy> -? \d+ \.\d+ )
     """
 )
-
 
 
 def parse_md_ener(ener_file):
@@ -30,12 +35,15 @@ def parse_pos_xyz(posxyz_file):
     lines = fp.readlines()
     energies_list = []
     pos_list = []
+    step_list = []
     while len(lines) > 0:
         chemical_symbols = []
         positions = []
         natoms = int(lines.pop(0))
         match = ENERGY_RE.search(lines.pop(0))
-        energies_list.append(match["energy"])
+        if match is not None:
+            energies_list.append(match["energy"])
+            step_list.append(int(match["i"]))
         for _ in range(natoms):
             line = lines.pop(0)
             symbol, x, y, z = line.split()[:4]
@@ -45,7 +53,7 @@ def parse_pos_xyz(posxyz_file):
         pos_list.append(positions)
     energies_list = np.array(energies_list, dtype=np.float64)
     pos_list = np.array(pos_list, dtype=np.float64)
-    return pos_list, energies_list, chemical_symbols
+    return pos_list, energies_list, chemical_symbols, step_list
 
 
 def parse_frc_xyz(frcxyz_file):

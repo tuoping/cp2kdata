@@ -10,8 +10,9 @@ from cp2kdata.log import get_logger
 from cp2kdata.utils import format_logger
 from cp2kdata.block_parser.header_info import GlobalInfo, Cp2kInfo, DFTInfo
 from cp2kdata.block_parser.dft_plus_u import parse_dft_plus_u_occ
-from cp2kdata.block_parser.forces import parse_atomic_forces_list
+from cp2kdata.block_parser.forces import parse_atomic_forces_list,parse_atomic_forces_list_md
 from cp2kdata.block_parser.geo_opt import parse_geo_opt_info
+from cp2kdata.block_parser.optstep import parse_opt_step
 from cp2kdata.block_parser.header_info import parse_dft_info, parse_global_info, parse_cp2k_info, parse_md_info
 from cp2kdata.block_parser.hirshfeld import parse_hirshfeld_pop_list
 from cp2kdata.block_parser.mulliken import parse_mulliken_pop_list
@@ -19,7 +20,7 @@ from cp2kdata.block_parser.energies import parse_energies_list
 from cp2kdata.block_parser.coordinates import parse_init_atomic_coordinates
 from cp2kdata.block_parser.atomic_kind import parse_atomic_kinds
 from cp2kdata.block_parser.errors_handle import parse_errors
-from cp2kdata.block_parser.stress import parse_stress_tensor_list
+from cp2kdata.block_parser.stress import parse_stress_tensor_list, parse_stress_tensor_list_md
 from cp2kdata.block_parser.cells import parse_all_cells, parse_all_md_cells
 from cp2kdata.block_parser.md_xyz import parse_md_ener, parse_pos_xyz, parse_frc_xyz, parse_md_stress, parse_md_cell
 from cp2kdata.block_parser.vibration import parse_vibration_freq_list
@@ -35,6 +36,7 @@ class Cp2kOutput:
             run_type: str = None,
             path_prefix: str = ".",
             restart: bool = None,
+            stride: int = None,
             **kwargs
     ):
 
@@ -102,7 +104,8 @@ class Cp2kOutput:
             logger.debug("Overwrite restart information with user provided restart = True.")
 
         self.check_run_type(run_type=self.global_info.run_type)
-
+        if run_type == "MD":
+            self.stride = stride
         run_type_parser_candidates = {
             "ENERGY": self.parse_energy_force,
             "ENERGY_FORCE": self.parse_energy_force,
@@ -338,6 +341,10 @@ class Cp2kOutput:
         self.atomic_kind = parse_atomic_kinds(self.output_file)
         self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
         self.stress_tensor_list = parse_stress_tensor_list(self.output_file)
+        print("Num of energies = ", len(self.energies_list))
+        print("Num of cells = ", len(self.all_cells))
+        print("Num of stress_tensor = ", len(self.stress_tensor_list))
+        print("Num of forces = ", len(self.atomic_forces_list))
 
     def parse_vibrational_analysis(self):
         self.parse_energy_force()
@@ -360,32 +367,76 @@ class Cp2kOutput:
         pos_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*pos*.xyz"))
         # if pos_xyz_file_list:
-        self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols = parse_pos_xyz(
+        atomic_frames_list, energies_list_from_pos, chemical_symbols, pos_step_list = parse_pos_xyz(
             pos_xyz_file_list[0])
-        self.energies_list = energies_list_from_pos
+        # self.energies_list = energies_list_from_pos
         # else:
-        #     self.energies_list = parse_energies_list(self.output_file)
+        # self.energies_list = parse_energies_list(self.output_file)
 
-        self.all_cells = parse_all_cells(self.output_file)
+        all_cells = parse_all_cells(self.output_file)
         self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
         self.stress_tensor_list = parse_stress_tensor_list(self.output_file)
+        log_step_list = parse_opt_step(self.output_file)
 
-        print("Num of energies = ", len(self.energies_list))
-        print("Num of cells = ", len(self.all_cells))
+        print("Num of energies = ", len(energies_list_from_pos))
+        print("Num of cells raw = ", len(all_cells))
         print("Num of stress_tensor = ", len(self.stress_tensor_list))
         print("Num of forces = ", len(self.atomic_forces_list))
+
+        print("Num of steps in LOG = ", len(log_step_list))
+        print("Num of steps in TRAJ = ", len(pos_step_list))
+        assert len(log_step_list) == len(self.stress_tensor_list)
+        print("Log steps = ")
+        print(log_step_list)
+        print("Traj steps = ")
+        print(pos_step_list)
+
+        self.all_cells = []
+        idx_all_cells = 0
+        for i in range(len(log_step_list)):
+            if idx_all_cells > len(all_cells):
+                raise Exception("Not enough cell read")
+            self.all_cells.append(all_cells[idx_all_cells])
+            if i != len(log_step_list) - 1:
+                if log_step_list[i]["has_pressure_deviation"] and log_step_list[i+1]["has_pressure_deviation"]:
+                    idx_all_cells += 1
+
+        self.atomic_frames_list = []
+        self.energies_list = []
+        self.chemical_symbols = []
+        idx_log_step = 0
+        for i in range(len(pos_step_list)):
+            if idx_log_step == len(log_step_list) and i == len(pos_step_list) - 1:
+                # if len(self.all_cells) == len(log_step_list) + 1:
+                #     self.all_cells.pop(-1)
+                # self.atomic_forces_list = self.atomic_forces_list[:-1]
+                # self.stress_tensor_list = self.stress_tensor_list[:-1]
+                break
+            elif idx_log_step == len(log_step_list) and i < len(pos_step_list) - 1:
+                raise Exception("Not enough log compared to opt-pos-1.xyz")
+            if log_step_list[idx_log_step]['step'] == pos_step_list[i]:
+                self.atomic_frames_list.append( atomic_frames_list[i])
+                self.energies_list.append( energies_list_from_pos[i])
+                self.chemical_symbols.append( chemical_symbols[i])
+                idx_log_step += 1
+            else:
+                pass
+        self.all_cells = np.array(self.all_cells)
+        self.energies_list = np.array(self.energies_list)
+        self.atomic_frames_list = np.array(self.atomic_frames_list)
+        self.chemical_symbols = np.array(self.chemical_symbols)
+
+        print("Num of cells = ", len(self.all_cells))
+        print("Num of energies = ", len(self.energies_list))
+        print("Num of stress_tensor = ", len(self.stress_tensor_list))
+        print("Num of atomic_frames_list = ", len(self.atomic_frames_list))
         if self.global_info.run_type == "CELL_OPT":
-            assert np.abs(len(self.all_cells) - len(self.energies_list)) < 2
-        assert np.abs(len(self.stress_tensor_list) - len(self.energies_list)) < 2
-        assert np.abs(len(self.atomic_forces_list) - len(self.energies_list)) < 2
-        self.num_frames = min([len(self.energies_list), len(self.stress_tensor_list), len(self.atomic_forces_list)])
-        print("Num of frames = ", self.num_frames)
-        self.energies_list = self.energies_list[:self.num_frames]
-        self.all_cells = self.all_cells[:self.num_frames]
-        self.stress_tensor_list = self.stress_tensor_list[:self.num_frames]
-        self.atomic_forces_list = self.atomic_forces_list[:self.num_frames]
-        self.atomic_frames_list = self.atomic_frames_list[:self.num_frames]
+            assert np.abs(len(self.all_cells) - len(self.energies_list)) < 1
+        assert np.abs(len(self.stress_tensor_list) - len(self.energies_list)) < 1
+        assert np.abs(len(self.atomic_forces_list) - len(self.energies_list)) < 1
+        self.num_frames = len(self.energies_list)
         # raise RuntimeError
+        
 
     def parse_md(self):
         self.md_info = parse_md_info(self.filename)
@@ -410,7 +461,7 @@ class Cp2kOutput:
 
         if pos_xyz_file_list:
             # TODO: Is it possible to have no pos file?
-            self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols = parse_pos_xyz(
+            self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols, _ = parse_pos_xyz(
                 pos_xyz_file_list[0])
 
             if not hasattr(self, "energies_list"):
@@ -426,44 +477,44 @@ class Cp2kOutput:
 
         frc_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*frc*.xyz"))
-        if frc_xyz_file_list:
-            self.atomic_forces_list = parse_frc_xyz(frc_xyz_file_list[0])
-        else:
-            format_logger(info="Forces", filename=self.filename)
-            self.atomic_forces_list = parse_atomic_forces_list(
-                self.output_file)
-
-            self.atomic_forces_list = self.drop_first_info(
-                self.cp2k_info, self.atomic_forces_list, info="forces")
-
-            self.atomic_forces_list = self.drop_last_info(
-                self.cp2k_info, self.atomic_forces_list, info="forces")
+        # if frc_xyz_file_list:
+        #     self.atomic_forces_list = parse_frc_xyz(frc_xyz_file_list[0])
+        # else:
+        format_logger(info="Forces", filename=self.filename)
+        self.atomic_forces_list = parse_atomic_forces_list_md(
+            self.output_file)
+        # self.atomic_forces_list = self.drop_first_info(
+        #     self.cp2k_info, self.atomic_forces_list, info="forces")
+        # 
+        # self.atomic_forces_list = self.drop_last_info(
+        #     self.cp2k_info, self.atomic_forces_list, info="forces")
 
         stress_file_list = glob.glob(
             os.path.join(self.path_prefix, "*.stress"))
-        if stress_file_list:
-            logger.warning(
-                f"cp2kdata found a file recording stresses: {stress_file_list[0]}"
-                f"But the parser for {stress_file_list[0]} is not supported yet"
-            )
-            # TODO: the unit of stress is bar in -1.stress file, but not GPa in the output file
-            # TODO: however, covert bar to GPa is not consistent with the output file!
-            # TODO: check this latter
-            # self.stress_tensor_list = parse_md_stress(stress_file_list[0])
-            self.stress_tensor_list = None
-        else:
-            format_logger(info="Stresses", filename=self.filename)
-            self.stress_tensor_list = parse_stress_tensor_list(
-                self.output_file)
+        # if stress_file_list:
+        #     logger.warning(
+        #         f"cp2kdata found a file recording stresses: {stress_file_list[0]}"
+        #         f"But the parser for {stress_file_list[0]} is not supported yet"
+        #     )
+        #     # TODO: the unit of stress is bar in -1.stress file, but not GPa in the output file
+        #     # TODO: however, covert bar to GPa is not consistent with the output file!
+        #     # TODO: check this latter
+        #     # self.stress_tensor_list = parse_md_stress(stress_file_list[0])
+        #     self.stress_tensor_list = None
+        # else:
+        format_logger(info="Stresses", filename=self.filename)
+        self.stress_tensor_list = parse_stress_tensor_list_md(
+            self.output_file)
 
-            # stress tensor could be None if the output file doesn't contain stress information
-            if self.stress_tensor_list is not None:
-                self.stress_tensor_list = self.drop_first_info(
-                    self.cp2k_info, self.stress_tensor_list, info="stresses")
+        # stress tensor could be None if the output file doesn't contain stress information
+        # if self.stress_tensor_list is not None:
+        #     self.stress_tensor_list = self.drop_first_info(
+        #         self.cp2k_info, self.stress_tensor_list, info="stresses")
+        # 
+        #     self.stress_tensor_list = self.drop_last_info(
+        #         self.cp2k_info, self.stress_tensor_list, info="stresses")
 
-                self.stress_tensor_list = self.drop_last_info(
-                    self.cp2k_info, self.stress_tensor_list, info="stresses")
-
+        self.energies_list = self.energies_list[::self.stride]
         self.num_frames = len(self.energies_list)
 
         # here parse cell information

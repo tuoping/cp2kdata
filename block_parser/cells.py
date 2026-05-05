@@ -8,31 +8,80 @@ from ..units import au2A
 
 ALL_CELL_RE = re.compile(
     r"""
-    \s+CELL\|\sVector\sa\s\[angstrom\]:
-    \s+(?P<xx>[\s-]\d+\.\d+)
-    \s+(?P<xy>[\s-]\d+\.\d+)
-    \s+(?P<xz>[\s-]\d+\.\d+)
-    \s+\|a\|\s+=\s+\S+
-    \n
-    \s+CELL\|\sVector\sb\s\[angstrom\]:
-    \s+(?P<yx>[\s-]\d+\.\d+)
-    \s+(?P<yy>[\s-]\d+\.\d+)
-    \s+(?P<yz>[\s-]\d+\.\d+)
-    \s+\|b\|\s+=\s+\S+
-    \n
-    \s+CELL\|\sVector\sc\s\[angstrom\]:
-    \s+(?P<zx>[\s-]\d+\.\d+)
-    \s+(?P<zy>[\s-]\d+\.\d+)
-    \s+(?P<zz>[\s-]\d+\.\d+)
-    \s+\|c\|\s+=\s+\S+
-    \n
+    ^\s*OPT\|\s*Pressure\s+deviation\s+\[bar\]\s*
+        (?P<pressure_deviation>[-+]?\d+\.\d+)\s*\r?\n
+    ^\s*OPT\|\s*Pressure\s+tolerance\s+\[bar\]\s*
+        (?P<pressure_tolerance>[-+]?\d+\.\d+)\s*\r?\n
+    ^\s*OPT\|\s*Pressure\s+is\s+converged\s*
+        (?P<pressure_converged>YES|NO)\s*\r?\n
+    ^\s*OPT\|\s*\*+\s*\r?\n
+    ^\s*OPT\|\s*Estimated\s+peak\s+process\s+memory\s+after\s+this\s+step\s+\[MiB\]\s*
+        (?P<memory_mib>\d+)\s*\r?\n
+
+    \s*\r?\n
+
+    ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
+        (?P<volume>[-+]?\d+\.\d+)\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
+        (?P<xx>[-+]?\d+\.\d+)\s+
+        (?P<xy>[-+]?\d+\.\d+)\s+
+        (?P<xz>[-+]?\d+\.\d+)\s+
+        \|a\|\s*=\s*\S+\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
+        (?P<yx>[-+]?\d+\.\d+)\s+
+        (?P<yy>[-+]?\d+\.\d+)\s+
+        (?P<yz>[-+]?\d+\.\d+)\s+
+        \|b\|\s*=\s*\S+\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
+        (?P<zx>[-+]?\d+\.\d+)\s+
+        (?P<zy>[-+]?\d+\.\d+)\s+
+        (?P<zz>[-+]?\d+\.\d+)\s+
+        \|c\|\s*=\s*\S+
     """,
-    re.VERBOSE
+    re.VERBOSE | re.MULTILINE,
+)
+
+
+INIT_CELL_RE = re.compile(
+    r"""
+    ^\s*CELL\|\s*Volume\s+\[angstrom\^3\]:\s*
+        (?P<volume>[-+]?\d+\.\d+)\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+a\s+\[angstrom\]:\s*
+        (?P<xx>[-+]?\d+\.\d+)\s+
+        (?P<xy>[-+]?\d+\.\d+)\s+
+        (?P<xz>[-+]?\d+\.\d+)\s+
+        \|a\|\s*=\s*\S+\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+b\s+\[angstrom\]:\s*
+        (?P<yx>[-+]?\d+\.\d+)\s+
+        (?P<yy>[-+]?\d+\.\d+)\s+
+        (?P<yz>[-+]?\d+\.\d+)\s+
+        \|b\|\s*=\s*\S+\s*\r?\n
+
+    ^\s*CELL\|\s*Vector\s+c\s+\[angstrom\]:\s*
+        (?P<zx>[-+]?\d+\.\d+)\s+
+        (?P<zy>[-+]?\d+\.\d+)\s+
+        (?P<zz>[-+]?\d+\.\d+)\s+
+        \|c\|\s*=\s*\S+
+    """,
+    re.VERBOSE | re.MULTILINE,
 )
 
 
 def parse_all_cells(output_file):
-    all_cells = []
+    for match in INIT_CELL_RE.finditer(output_file):
+        cell = [
+            [match["xx"], match["xy"], match["xz"]],
+            [match["yx"], match["yy"], match["yz"]],
+            [match["zx"], match["zy"], match["zz"]]
+        ]
+        init_cell = cell
+        break
+    all_cells = [init_cell]
     for match in ALL_CELL_RE.finditer(output_file):
         # print(match)
         cell = [

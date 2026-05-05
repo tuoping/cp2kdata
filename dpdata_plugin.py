@@ -66,23 +66,13 @@ class CP2KEnergyForceFormat(Format):
             chemical_symbols=chemical_symbols)
         # atom_numbs not total num of atoms!
         data['energies'] = cp2k_e_f.energies_list * AU_TO_EV
-        if "CELL_OPT" in cp2k_e_f.global_info.run_type:
-            cells = cp2k_e_f.get_all_cells()
-            data['cells'] = cells
+        cells = cp2k_e_f.get_all_cells()
+        data['cells'] = cells
+        if "_OPT" in cp2k_e_f.global_info.run_type:
             if cp2k_e_f.atomic_frames_list is None:
                 raise ValueError("No atomic coordinates found in cp2k output, do you have *-pos-*.xyz file?")
             else:
                 data['coords'] = cp2k_e_f.atomic_frames_list
-        elif "GEO_OPT" in cp2k_e_f.global_info.run_type:
-            if cp2k_e_f.atomic_frames_list is None:
-                raise ValueError("No atomic coordinates found in cp2k output, do you have *-pos-*.xyz file?")
-            else:
-                data['coords'] = cp2k_e_f.atomic_frames_list
-            num_frames = len( data['coords'])
-            cells = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
-            cells = np.repeat(cells, repeats=num_frames, axis=0)
-            data['cells'] = cells
-            print("Num of cells = ", len(data['cells']))
         else:
             data['cells'] = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
             data['coords'] = cp2k_e_f.init_atomic_coordinates[np.newaxis, :, :]
@@ -112,10 +102,13 @@ class CP2KMDFormat(Format):
         # -- start parsing --
         logger.debug(WRAPPER)
 
-        cp2kmd = Cp2kOutput(output_file=cp2k_output_name,
+        path_prefix = "/".join(file_name.split("/")[:-1])
+        print(file_name)
+        print(file_name.split("/")[-1], path_prefix)
+        cp2kmd = Cp2kOutput(file_name.split("/")[-1], 
                             run_type="MD",
-                            path_prefix=path_prefix,
-                            restart=restart)
+                            path_prefix=path_prefix, **kwargs)
+        # cp2k_e_f = Cp2kOutput(file_name)
 
         num_frames = cp2kmd.get_num_frames()
 
