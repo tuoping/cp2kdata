@@ -3,12 +3,6 @@ import regex as re
 import numpy as np
 from cp2kdata.utils import format_logger
 
-# ENERGY_RE = re.compile(
-#     r"""(?x)
-#     E \s* = \s*     # match 'E ='
-#     (?P<energy> -? \d+ \.\d+ )   # capture the float (with optional minus)
-#     """
-# )
 
 ENERGY_RE = re.compile(
     r"""(?x)
@@ -27,6 +21,61 @@ def parse_md_ener(ener_file):
     energies_list = np.loadtxt(ener_file, usecols=4, ndmin=1, dtype=np.float64)
     return energies_list
 
+FLOAT = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][+-]?\d+)?"
+
+LATTICE_RE = re.compile(
+    rf"""(?x)
+    Lattice \s* = \s* "
+    (?P<a1x>{FLOAT}) \s+
+    (?P<a1y>{FLOAT}) \s+
+    (?P<a1z>{FLOAT}) \s+
+    (?P<a2x>{FLOAT}) \s+
+    (?P<a2y>{FLOAT}) \s+
+    (?P<a2z>{FLOAT}) \s+
+    (?P<a3x>{FLOAT}) \s+
+    (?P<a3y>{FLOAT}) \s+
+    (?P<a3z>{FLOAT})
+    "
+    """
+)
+
+def parse_pos_xyz_md(posxyz_file):
+    format_logger(info="Structures", filename=posxyz_file)
+    #print(f"Parsing Structures from {posxyz_file}")
+    fp = open(posxyz_file, "r")
+    lines = fp.readlines()
+    energies_list = []
+    pos_list = []
+    step_list = []
+    lattice_list = []
+    while len(lines) > 0:
+        chemical_symbols = []
+        positions = []
+        natoms = int(lines.pop(0))
+        second_line = lines.pop(0)
+        match = ENERGY_RE.search(second_line)
+        if match is not None:
+            energies_list.append(match["energy"])
+            step_list.append(int(match["i"]))
+        match_latt = LATTICE_RE.search(second_line)
+        if match_latt is not None:
+            lattice = np.array([
+                [match_latt["a1x"], match_latt["a1y"], match_latt["a1z"]],
+                [match_latt["a2x"], match_latt["a2y"], match_latt["a2z"]],
+                [match_latt["a3x"], match_latt["a3y"], match_latt["a3z"]],
+            ], dtype=np.float64)
+            lattice_list.append(lattice)
+        for _ in range(natoms):
+            line = lines.pop(0)
+            symbol, x, y, z = line.split()[:4]
+            symbol = symbol.lower().capitalize()
+            chemical_symbols.append(symbol)
+            positions.append([float(x), float(y), float(z)])
+        pos_list.append(positions)
+    energies_list = np.array(energies_list, dtype=np.float64)
+    pos_list = np.array(pos_list, dtype=np.float64)
+    lattice_list = np.array(lattice_list, dtype=np.float64)
+    return pos_list, energies_list, chemical_symbols, step_list, lattice_list
 
 def parse_pos_xyz(posxyz_file):
     format_logger(info="Structures", filename=posxyz_file)

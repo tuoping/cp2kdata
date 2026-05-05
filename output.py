@@ -22,7 +22,7 @@ from cp2kdata.block_parser.atomic_kind import parse_atomic_kinds
 from cp2kdata.block_parser.errors_handle import parse_errors
 from cp2kdata.block_parser.stress import parse_stress_tensor_list, parse_stress_tensor_list_md, parse_stress_tensor_list_static
 from cp2kdata.block_parser.cells import parse_all_cells, parse_all_md_cells
-from cp2kdata.block_parser.md_xyz import parse_md_ener, parse_pos_xyz, parse_frc_xyz, parse_md_stress, parse_md_cell
+from cp2kdata.block_parser.md_xyz import parse_md_ener, parse_pos_xyz, parse_pos_xyz_md, parse_frc_xyz, parse_md_stress, parse_md_cell
 from cp2kdata.block_parser.vibration import parse_vibration_freq_list
 
 logger = get_logger(__name__)
@@ -463,10 +463,9 @@ class Cp2kOutput:
                 f"{pos_xyz_file_list}.\n"
                 f"Please remove extra pos files and keep only one pos file in the folder."
                 )
-
         if pos_xyz_file_list:
             # TODO: Is it possible to have no pos file?
-            self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols, _ = parse_pos_xyz(
+            self.atomic_frames_list, energies_list_from_pos, self.chemical_symbols, _, self.all_cells = parse_pos_xyz_md(
                 pos_xyz_file_list[0])
 
             if not hasattr(self, "energies_list"):
@@ -482,17 +481,17 @@ class Cp2kOutput:
 
         frc_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*frc*.xyz"))
-        # if frc_xyz_file_list:
-        #     self.atomic_forces_list = parse_frc_xyz(frc_xyz_file_list[0])
-        # else:
-        format_logger(info="Forces", filename=self.filename)
-        self.atomic_forces_list = parse_atomic_forces_list_md(
-            self.output_file)
-        # self.atomic_forces_list = self.drop_first_info(
-        #     self.cp2k_info, self.atomic_forces_list, info="forces")
-        # 
-        # self.atomic_forces_list = self.drop_last_info(
-        #     self.cp2k_info, self.atomic_forces_list, info="forces")
+        if frc_xyz_file_list:
+            self.atomic_forces_list = parse_frc_xyz(frc_xyz_file_list[0])
+        else:
+            format_logger(info="Forces", filename=self.filename)
+            self.atomic_forces_list = parse_atomic_forces_list_md(
+                self.output_file)
+        self.atomic_forces_list = self.drop_first_info(
+            self.cp2k_info, self.atomic_forces_list, info="forces")
+        
+        self.atomic_forces_list = self.drop_last_info(
+            self.cp2k_info, self.atomic_forces_list, info="forces")
 
         stress_file_list = glob.glob(
             os.path.join(self.path_prefix, "*.stress"))
@@ -548,33 +547,34 @@ class Cp2kOutput:
                 "------------------\n"
             )
 
-        cell_file_list = glob.glob(os.path.join(self.path_prefix, "*.cell"))
-        if (self.md_info.ensemble_type == "NVT") or \
-            (self.md_info.ensemble_type == "NVE") or \
-                (self.md_info.ensemble_type == "REFTRAJ"):  # not ture REFTRAJ also contrains different cell?
-            if cell_file_list:
-                self.all_cells = parse_md_cell(cell_file_list[0])
-            elif self.filename:
-                format_logger(info="Cells", filename=self.filename)
-                logger.warning(WARNING_MSG_PARSE_CELL_FROM_OUTPUT)
-
-                # self.organize_md_cell()
-                # parse the first cell
-                first_cell = parse_all_cells(self.output_file)
-                assert first_cell.shape == (1, 3, 3)
-                self.all_cells = first_cell
-                self.all_cells = np.repeat(
-                    self.all_cells, repeats=self.num_frames, axis=0)
-
-        elif (self.md_info.ensemble_type == "NPT_F"):
-            if cell_file_list:
-                # all cells include initial cell
-                self.all_cells = parse_md_cell(cell_file_list[0])
-            elif self.filename:
-                format_logger(info="Cells", filename=self.filename)
-                logger.warning(WARNING_MSG_PARSE_CELL_FROM_OUTPUT)
-
-                self.organize_md_cell()
+        if not hasattr(self, "all_cells"):
+            cell_file_list = glob.glob(os.path.join(self.path_prefix, "*.cell"))
+            if (self.md_info.ensemble_type == "NVT") or \
+                (self.md_info.ensemble_type == "NVE") or \
+                    (self.md_info.ensemble_type == "REFTRAJ"):  # not ture REFTRAJ also contrains different cell?
+                if cell_file_list:
+                    self.all_cells = parse_md_cell(cell_file_list[0])
+                elif self.filename:
+                    format_logger(info="Cells", filename=self.filename)
+                    logger.warning(WARNING_MSG_PARSE_CELL_FROM_OUTPUT)
+            
+                    # self.organize_md_cell()
+                    # parse the first cell
+                    first_cell = parse_all_cells(self.output_file)
+                    assert first_cell.shape == (1, 3, 3)
+                    self.all_cells = first_cell
+                    self.all_cells = np.repeat(
+                        self.all_cells, repeats=self.num_frames, axis=0)
+            
+            elif (self.md_info.ensemble_type == "NPT_F"):
+                if cell_file_list:
+                    # all cells include initial cell
+                    self.all_cells = parse_md_cell(cell_file_list[0])
+                elif self.filename:
+                    format_logger(info="Cells", filename=self.filename)
+                    logger.warning(WARNING_MSG_PARSE_CELL_FROM_OUTPUT)
+            
+                    self.organize_md_cell()
 
         elif (self.md_info.ensemble_type == "NPT_I"):
             if cell_file_list:
@@ -597,7 +597,7 @@ class Cp2kOutput:
 
         # only parse the first cell
         first_cell = parse_all_cells(self.output_file)
-        assert first_cell.shape == (1, 3, 3), WARNING_MSG
+        assert first_cell[0]['cell'].shape == (3, 3), WARNING_MSG
         # parse the rest of the cells
         self.all_cells = parse_all_md_cells(self.output_file,
                                             cp2k_info=self.cp2k_info,
