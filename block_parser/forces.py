@@ -105,15 +105,35 @@ ATOMIC_FORCES_RE = re.compile(
     [-+]?\d+\.\d+E[-+]\d+\s+
     [-+]?\d+\.\d+E[-+]\d+\s*\r?\n
 
-    [\s\S]*?
+    # Anything between stress tensor and optional BRENT / OPT block
+    (?:(?!^[^\S\r\n]*OPT\|)[\s\S])*?
 
-    ^\s*\*{10,}\s*\r?\n
-    ^\s*\*{3}\s*BRENT\s*-\s*NUMBER\s+OF\s+ENERGY\s+EVALUATIONS\s*:\s*
-        (?P<n_eval>\d+)\s*\*{2,}\s*\r?\n
-    ^\s*\*{10,}\s*\r?\n
-    \r?\n
+    # Optional BRENT block
+    (?:
+        ^[^\S\r\n]*\*{10,}[^\S\r\n]*\r?\n
+        ^[^\S\r\n]*\*{3}[^\S\r\n]*BRENT[^\S\r\n]*-[^\S\r\n]*NUMBER[^\S\r\n]+OF[^\S\r\n]+ENERGY[^\S\r\n]+EVALUATIONS[^\S\r\n]*:[^\S\r\n]*
+            (?P<n_eval>\d+)[^\S\r\n]*\*{2,}[^\S\r\n]*\r?\n
+        ^[^\S\r\n]*\*{10,}[^\S\r\n]*\r?\n
+    )?
 
-    ^\s*OPT\|\s+\*+
+    [^\S\r\n]*
+
+    ^[^\S\r\n]*OPT\|[^\S\r\n]*\*+[^\S\r\n]*\r?\n
+
+    ^[^\S\r\n]*OPT\|[^\S\r\n]*Step[^\S\r\n]+number[^\S\r\n]+
+        (?P<step>\d+)[^\S\r\n]*\r?\n
+
+    ^[^\S\r\n]*OPT\|[^\S\r\n]*Optimization[^\S\r\n]+method[^\S\r\n]+
+        (?P<method>\S+)[^\S\r\n]*\r?\n
+
+    ^[^\S\r\n]*OPT\|[^\S\r\n]*Total[^\S\r\n]+energy[^\S\r\n]+\[hartree\][^\S\r\n]+
+        (?P<energy>[-+]?\d+\.\d+)[^\S\r\n]*\r?\n
+
+    # Optional internal pressure line
+    (?:
+        ^[^\S\r\n]*OPT\|[^\S\r\n]*Internal[^\S\r\n]+pressure[^\S\r\n]+\[bar\][^\S\r\n]+
+            (?P<pressure>[-+]?\d+\.\d+)[^\S\r\n]*\r?\n
+    )?
     """,
     re.VERBOSE | re.MULTILINE,
 )
@@ -129,6 +149,9 @@ def parse_atomic_forces_list(output_file: str):
     """
     atomic_forces_list = []
     for block_match  in ATOMIC_FORCES_RE.finditer(output_file):
+        step = int(block_match.group("step"))
+        if step == 0:
+            continue
         forces_block = block_match.group("forces_block")
 
         forces = [
@@ -138,6 +161,7 @@ def parse_atomic_forces_list(output_file: str):
             for line_match in FORCE_LINE_RE.finditer(forces_block)
         ]
         atomic_forces_list.append(forces)
+        print("        matched forces")
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
     else:

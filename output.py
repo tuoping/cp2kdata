@@ -360,23 +360,29 @@ class Cp2kOutput:
 
     def parse_cell_opt(self):
         # initial information
+        print("parse cell opt")
         self.init_atomic_coordinates, self.atom_kind_list, self.chemical_symbols = parse_init_atomic_coordinates(
             self.output_file)
+        print("    init")
         self.atomic_kind = parse_atomic_kinds(self.output_file)
-
+        print("    atomic_kind")
         pos_xyz_file_list = glob.glob(
             os.path.join(self.path_prefix, "*pos*.xyz"))
         # if pos_xyz_file_list:
         atomic_frames_list, energies_list_from_pos, chemical_symbols, pos_step_list = parse_pos_xyz(
             pos_xyz_file_list[0])
+        print("    xyz_file")
         # self.energies_list = energies_list_from_pos
         # else:
         # self.energies_list = parse_energies_list(self.output_file)
 
         all_cells = parse_all_cells(self.output_file)
+        print("    cells")
         self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
-        self.stress_tensor_list = parse_stress_tensor_list(self.output_file)
-        log_step_list = parse_opt_step(self.output_file)
+        print("    force")
+        self.stress_tensor_list, log_step_list = parse_stress_tensor_list(self.output_file)
+        print("    stress")
+        # log_step_list = parse_opt_step(self.output_file)
 
         print("Num of energies = ", len(energies_list_from_pos))
         print("Num of cells raw = ", len(all_cells))
@@ -397,10 +403,9 @@ class Cp2kOutput:
             self.all_cells.append(all_cells[idx_all_cells]['cell'])
             if i == len(log_step_list)-1:
                 break
-            if log_step_list[i]["has_pressure_deviation"] and log_step_list[i+1]["has_pressure_deviation"]:
+            if log_step_list[i]["has_pressure"] and log_step_list[i+1]["has_pressure"]:
                 idx_all_cells += 1
                 if idx_all_cells == len(all_cells):
-                    assert log_step_list[i]['step'] == 1
                     idx_all_cells -= 1
                     continue
                 if log_step_list[i]['step'] != all_cells[idx_all_cells]['step']:
@@ -434,6 +439,7 @@ class Cp2kOutput:
         print("Num of cells = ", len(self.all_cells))
         print("Num of energies = ", len(self.energies_list))
         print("Num of stress_tensor = ", len(self.stress_tensor_list))
+        print("Num of atomic_forces = ", len(self.atomic_forces_list))
         print("Num of atomic_frames_list = ", len(self.atomic_frames_list))
         if self.global_info.run_type == "CELL_OPT":
             assert np.abs(len(self.all_cells) - len(self.energies_list)) < 1
