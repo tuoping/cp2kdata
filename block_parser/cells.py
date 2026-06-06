@@ -159,14 +159,14 @@ def parse_all_md_cells(output_file: List[str],
     # notice that the cell of step 0 is excluded from MD| block
 
     # choose parser according to cp2k_info.version
-    if cp2k_info.version in ['9.1', '2022.2', '2023.1', '2023.2', '2024.1']:
+    if cp2k_info.version in ['9.1', '2022.2', '2023.1', '2023.2', '2024.1', '2025.1']:
         ALL_MD_CELL_RE = ALL_MD_CELL_RE_V2023
     elif cp2k_info.version in ['7.1']:
         ALL_MD_CELL_RE = ALL_MD_CELL_RE_V7
     else:
         WARNING = f"cp2k version={cp2k_info.version} is not supported yet \
                     for parsing MD cell from cp2k log files."
-        raise NotImplementedError(WARNING)
+        print(WARNING)
 
     all_md_cells = []
     if init_cell_info is None:
@@ -184,7 +184,7 @@ def parse_all_md_cells(output_file: List[str],
             all_md_cells.append(cell)
     else:
         # for NPT_I parser, cell angle info is lost in MD| block
-        init_cell_param = cell_to_cellpar(init_cell_info)
+        init_cell_param = cell_to_cellpar(init_cell_info['cell'])
         init_cell_angles = init_cell_param[3:]
         for match in ALL_MD_CELL_RE.finditer(output_file):
             # print(match)

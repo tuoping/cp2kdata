@@ -111,7 +111,6 @@ def parse_stress_tensor_list(output_file):
         ]
         stress_tensor_list.append(stress_tensor)
 
-        print("        matched stress")
         pressure = match.group("pressure")
 
         steps_list.append({

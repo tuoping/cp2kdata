@@ -161,7 +161,6 @@ def parse_atomic_forces_list(output_file: str):
             for line_match in FORCE_LINE_RE.finditer(forces_block)
         ]
         atomic_forces_list.append(forces)
-        print("        matched forces")
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
     else:
