@@ -54,6 +54,7 @@ class CP2KEnergyForceFormat(Format):
         print(file_name.split("/")[-1], path_prefix)
         cp2k_e_f = Cp2kOutput(file_name.split("/")[-1], path_prefix=path_prefix)
         # cp2k_e_f = Cp2kOutput(file_name)
+        print("Output Num of atomic_forces = ", len(cp2k_e_f.atomic_forces_list))
 
         chemical_symbols = get_chemical_symbols_from_cp2kdata(
             cp2koutput=cp2k_e_f,
@@ -77,6 +78,7 @@ class CP2KEnergyForceFormat(Format):
             data['cells'] = cp2k_e_f.get_init_cell()[np.newaxis, :, :]
             data['coords'] = cp2k_e_f.init_atomic_coordinates[np.newaxis, :, :]
         data['forces'] = cp2k_e_f.atomic_forces_list * AU_TO_EV/AU_TO_ANG
+        print("Data Num of atomic_forces = ", len(data['forces']))
         if "OPT" in cp2k_e_f.global_info.run_type:
             assert cp2k_e_f.has_stress()
         if cp2k_e_f.has_stress():

@@ -65,7 +65,118 @@ def parse_atomic_forces_list_static(output_file: str):
     else:
         return None
 
-ATOMIC_FORCES_RE = re.compile(
+import regex as re
+
+FLOAT = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
+HSPACE = r"[^\S\r\n]"
+
+ATOMIC_FORCES_RE_V23 = re.compile(
+    rf"""
+    ^{HSPACE}*ATOMIC{HSPACE}+FORCES{HSPACE}+in{HSPACE}+\[a\.u\.\]{HSPACE}*\r?\n
+    (?:^{HSPACE}*\r?\n)*
+    ^{HSPACE}*\#{HSPACE}+Atom{HSPACE}+Kind{HSPACE}+Element{HSPACE}+X{HSPACE}+Y{HSPACE}+Z{HSPACE}*\r?\n
+
+    (?P<forces_block>
+        (?:
+            ^{HSPACE}*\d+{HSPACE}+\d+{HSPACE}+\S+{HSPACE}+
+            {FLOAT}{HSPACE}+
+            {FLOAT}{HSPACE}+
+            {FLOAT}{HSPACE}*
+            \r?\n
+        )+
+    )
+
+    ^{HSPACE}*SUM{HSPACE}+OF{HSPACE}+ATOMIC{HSPACE}+FORCES{HSPACE}+
+    {FLOAT}{HSPACE}+
+    {FLOAT}{HSPACE}+
+    {FLOAT}{HSPACE}+
+    {FLOAT}{HSPACE}*\r?\n
+
+    ^{HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+Analytical{HSPACE}+stress{HSPACE}+tensor{HSPACE}+\[GPa\]{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+y{HSPACE}+z{HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+
+        (?P<xx>{FLOAT}){HSPACE}+
+        (?P<xy>{FLOAT}){HSPACE}+
+        (?P<xz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+y{HSPACE}+
+        (?P<yx>{FLOAT}){HSPACE}+
+        (?P<yy>{FLOAT}){HSPACE}+
+        (?P<yz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+z{HSPACE}+
+        (?P<zx>{FLOAT}){HSPACE}+
+        (?P<zy>{FLOAT}){HSPACE}+
+        (?P<zz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}*1/3{HSPACE}+Trace{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}*Determinant{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+
+    ^{HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+Eigenvectors{HSPACE}+and{HSPACE}+eigenvalues{HSPACE}+of{HSPACE}+the{HSPACE}+analytical{HSPACE}+stress{HSPACE}+tensor{HSPACE}+\[GPa\]{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+1{HSPACE}+2{HSPACE}+3{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+Eigenvalues{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+y{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+z{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+
+    ^{HSPACE}*\r?\n
+
+    # Optional "Informations at step" block
+    (?:
+        ^{HSPACE}*-{{5,}}{HSPACE}+Informations{HSPACE}+at{HSPACE}+step{HSPACE}*={HSPACE}*
+            (?P<info_step>\d+){HSPACE}*-{{5,}}{HSPACE}*\r?\n
+
+        ^{HSPACE}*Optimization{HSPACE}+Method{HSPACE}*={HSPACE}*
+            (?P<method>\S+){HSPACE}*\r?\n
+
+        ^{HSPACE}*Total{HSPACE}+Energy{HSPACE}*={HSPACE}*
+            (?P<energy>{FLOAT}){HSPACE}*\r?\n
+
+        (?:
+            ^{HSPACE}*Internal{HSPACE}+Pressure{HSPACE}+\[bar\]{HSPACE}*={HSPACE}*
+                (?P<pressure>{FLOAT}){HSPACE}*\r?\n
+        )?
+
+        # Remaining lines until the dashed end of the information block
+        (?:
+            ^(?!{HSPACE}*-{{5,}}{HSPACE}*$)[^\r\n]*\r?\n
+        )*
+
+        ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+
+        (?:
+            ^{HSPACE}*Estimated{HSPACE}+peak{HSPACE}+process{HSPACE}+memory{HSPACE}+after{HSPACE}+this{HSPACE}+step{HSPACE}+\[MiB\]{HSPACE}+
+                (?P<memory_mib>{FLOAT}){HSPACE}*\r?\n
+        )?
+
+        ^{HSPACE}*\r?\n
+    )?
+
+    ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+    ^{HSPACE}*OPTIMIZATION{HSPACE}+STEP:{HSPACE}+
+        (?P<step>\d+){HSPACE}*\r?\n
+    ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+
+FORCE_LINE_RE_V23 = re.compile(
+    rf"""
+    ^{HSPACE}*\d+{HSPACE}+\d+{HSPACE}+\S+{HSPACE}+
+    (?P<x>{FLOAT}){HSPACE}+
+    (?P<y>{FLOAT}){HSPACE}+
+    (?P<z>{FLOAT}){HSPACE}*$
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+
+
+ATOMIC_FORCES_RE_other = re.compile(
     r"""
     ^\s*FORCES\|\s+Atomic\s+forces\s+\[hartree/bohr\]\s*\r?\n
     ^\s*FORCES\|\s+Atom\s+x\s+y\s+z\s+\|f\|\s*\r?\n
@@ -139,8 +250,8 @@ ATOMIC_FORCES_RE = re.compile(
 )
 
 
-
-def parse_atomic_forces_list(output_file: str):
+from .header_info import Cp2kInfo
+def parse_atomic_forces_list(output_file: str, cp2k_info: Cp2kInfo):
     """
     Parse one or more 'FORCES| Atomic forces [hartree/bohr]' blocks from a text blob.
 
@@ -148,22 +259,28 @@ def parse_atomic_forces_list(output_file: str):
         np.ndarray of shape (n_blocks, n_atoms, 3) with floats (x,y,z), or None if no blocks found.
     """
     atomic_forces_list = []
+    if cp2k_info.version in ['2023.2']:
+        ATOMIC_FORCES_RE = ATOMIC_FORCES_RE_V23
+        FORCE_LINE_RE_select = FORCE_LINE_RE_V23
+    else:
+        ATOMIC_FORCES_RE = ATOMIC_FORCES_RE_other
+        FORCE_LINE_RE_select = FORCE_LINE_RE
     for block_match  in ATOMIC_FORCES_RE.finditer(output_file):
         step = int(block_match.group("step"))
         if step == 0:
             continue
         forces_block = block_match.group("forces_block")
-
         forces = [
             [float(line_match.group("x")),
              float(line_match.group("y")),
              float(line_match.group("z"))]
-            for line_match in FORCE_LINE_RE.finditer(forces_block)
+            for line_match in FORCE_LINE_RE_select.finditer(forces_block)
         ]
         atomic_forces_list.append(forces)
     if atomic_forces_list:
         return np.array(atomic_forces_list, dtype=float)
     else:
+        raise RuntimeError
         return None
 
 

@@ -124,6 +124,9 @@ class Cp2kOutput:
         else:
             f"parser for run type {self.global_info.run_type} is not implemented yet!"
 
+        print("Final Num of atomic_frames_list = ", len(self.atomic_frames_list))
+        print("Final Num of atomic_forces = ", len(self.atomic_forces_list))
+
         # self.errors_info = parse_errors(self.output_file)
         # if ignore_error:
         #    pass
@@ -378,13 +381,14 @@ class Cp2kOutput:
 
         all_cells = parse_all_cells(self.output_file)
         print("    cells")
-        self.atomic_forces_list = parse_atomic_forces_list(self.output_file)
+        self.atomic_forces_list = parse_atomic_forces_list(self.output_file, self.cp2k_info)
         print("    force")
-        self.stress_tensor_list, log_step_list = parse_stress_tensor_list(self.output_file)
+        self.stress_tensor_list, log_step_list = parse_stress_tensor_list(self.output_file, self.cp2k_info)
         print("    stress")
         # log_step_list = parse_opt_step(self.output_file)
 
         print("Num of energies = ", len(energies_list_from_pos))
+        print("Num of chemical symbols = ", len(chemical_symbols))
         print("Num of cells raw = ", len(all_cells))
         print("Num of stress_tensor = ", len(self.stress_tensor_list))
         print("Num of forces = ", len(self.atomic_forces_list))
@@ -413,7 +417,6 @@ class Cp2kOutput:
 
         self.atomic_frames_list = []
         self.energies_list = []
-        self.chemical_symbols = []
         idx_log_step = 0
         for i in range(len(pos_step_list)):
             if idx_log_step == len(log_step_list) and i == len(pos_step_list) - 1:
@@ -427,24 +430,29 @@ class Cp2kOutput:
             if log_step_list[idx_log_step]['step'] == pos_step_list[i]:
                 self.atomic_frames_list.append( atomic_frames_list[i])
                 self.energies_list.append( energies_list_from_pos[i])
-                self.chemical_symbols.append( chemical_symbols[i])
                 idx_log_step += 1
             else:
                 pass
         self.all_cells = np.array(self.all_cells)
         self.energies_list = np.array(self.energies_list)
         self.atomic_frames_list = np.array(self.atomic_frames_list)
-        self.chemical_symbols = np.array(self.chemical_symbols)
+
+        if self.global_info.run_type == "CELL_OPT":
+            if not np.abs(len(self.all_cells) - len(self.energies_list)) < 2:
+                raise Exception(f"len(self.all_cells) {len(self.all_cells)} - len(energies) {len(self.energies_list)} more than +- 1")
+        if len(self.stress_tensor_list) - len(self.energies_list) == 1:
+            assert len(self.all_cells) == len(self.stress_tensor_list)
+            self.stress_tensor_list = self.stress_tensor_list[:-1]
+            self.atomic_forces_list = self.atomic_forces_list[:-1]
+            self.all_cells = self.all_cells[:-1]
+        elif np.abs( len(self.stress_tensor_list) - len(self.energies_list)) > 1:
+            raise Exception(f"len(stress) {len(self.stress_tensor_list)} != len(energies) {len(self.energies_list)}")
 
         print("Num of cells = ", len(self.all_cells))
         print("Num of energies = ", len(self.energies_list))
         print("Num of stress_tensor = ", len(self.stress_tensor_list))
         print("Num of atomic_forces = ", len(self.atomic_forces_list))
         print("Num of atomic_frames_list = ", len(self.atomic_frames_list))
-        if self.global_info.run_type == "CELL_OPT":
-            assert np.abs(len(self.all_cells) - len(self.energies_list)) < 1
-        assert np.abs(len(self.stress_tensor_list) - len(self.energies_list)) < 1
-        assert np.abs(len(self.atomic_forces_list) - len(self.energies_list)) < 1
         self.num_frames = len(self.energies_list)
         # raise RuntimeError
         

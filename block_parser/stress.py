@@ -1,5 +1,6 @@
 import regex as re
 import numpy as np
+from .header_info import Cp2kInfo
 
 FLOAT = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?"
 
@@ -40,9 +41,84 @@ def parse_stress_tensor_list_static(output_file):
         return None
 
 
-import regex as re
+FLOAT = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
+HSPACE = r"[^\S\r\n]"
 
-STRESS_RE = re.compile(
+STRESS_RE_V23 = re.compile(
+    rf"""
+    ^{HSPACE}*STRESS\|{HSPACE}+Analytical{HSPACE}+stress{HSPACE}+tensor{HSPACE}+\[GPa\]{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+y{HSPACE}+z{HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+
+        (?P<xx>{FLOAT}){HSPACE}+
+        (?P<xy>{FLOAT}){HSPACE}+
+        (?P<xz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+y{HSPACE}+
+        (?P<yx>{FLOAT}){HSPACE}+
+        (?P<yy>{FLOAT}){HSPACE}+
+        (?P<yz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+z{HSPACE}+
+        (?P<zx>{FLOAT}){HSPACE}+
+        (?P<zy>{FLOAT}){HSPACE}+
+        (?P<zz>{FLOAT}){HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}*1/3{HSPACE}+Trace{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}*Determinant{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+
+    ^{HSPACE}*\r?\n
+
+    ^{HSPACE}*STRESS\|{HSPACE}+Eigenvectors{HSPACE}+and{HSPACE}+eigenvalues{HSPACE}+of{HSPACE}+the{HSPACE}+analytical{HSPACE}+stress{HSPACE}+tensor{HSPACE}+\[GPa\]{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+1{HSPACE}+2{HSPACE}+3{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+Eigenvalues{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+x{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+y{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+    ^{HSPACE}*STRESS\|{HSPACE}+z{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}+{FLOAT}{HSPACE}*\r?\n
+
+    ^{HSPACE}*\r?\n
+
+    # Optional "Informations at step" block
+    (?:
+        ^{HSPACE}*-{{5,}}{HSPACE}+Informations{HSPACE}+at{HSPACE}+step{HSPACE}*={HSPACE}*
+            (?P<info_step>\d+){HSPACE}*-{{5,}}{HSPACE}*\r?\n
+
+        ^{HSPACE}*Optimization{HSPACE}+Method{HSPACE}*={HSPACE}*
+            (?P<method>\S+){HSPACE}*\r?\n
+
+        ^{HSPACE}*Total{HSPACE}+Energy{HSPACE}*={HSPACE}*
+            (?P<energy>{FLOAT}){HSPACE}*\r?\n
+
+        (?:
+            ^{HSPACE}*Internal{HSPACE}+Pressure{HSPACE}+\[bar\]{HSPACE}*={HSPACE}*
+                (?P<pressure>{FLOAT}){HSPACE}*\r?\n
+        )?
+
+        # Remaining lines until the dashed end of the information block
+        (?:
+            ^(?!{HSPACE}*-{{5,}}{HSPACE}*$)[^\r\n]*\r?\n
+        )*
+
+        ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+
+        (?:
+            ^{HSPACE}*Estimated{HSPACE}+peak{HSPACE}+process{HSPACE}+memory{HSPACE}+after{HSPACE}+this{HSPACE}+step{HSPACE}+\[MiB\]{HSPACE}+
+                (?P<memory_mib>{FLOAT}){HSPACE}*\r?\n
+        )?
+
+        ^{HSPACE}*\r?\n
+    )?
+
+    ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+    ^{HSPACE}*OPTIMIZATION{HSPACE}+STEP:{HSPACE}+
+        (?P<step>\d+){HSPACE}*\r?\n
+    ^{HSPACE}*-{{5,}}{HSPACE}*\r?\n
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+
+
+STRESS_RE_other = re.compile(
     r"""
     ^[^\S\r\n]*STRESS\|[^\S\r\n]+Analytical[^\S\r\n]+stress[^\S\r\n]+tensor[^\S\r\n]+\[bar\][^\S\r\n]*\r?\n
     ^[^\S\r\n]*STRESS\|[^\S\r\n]+x[^\S\r\n]+y[^\S\r\n]+z[^\S\r\n]*\r?\n
@@ -97,9 +173,15 @@ STRESS_RE = re.compile(
 
 
 
-def parse_stress_tensor_list(output_file):
+def parse_stress_tensor_list(output_file,
+                       cp2k_info: Cp2kInfo,
+    ):
     stress_tensor_list = []
     steps_list = []
+    if cp2k_info.version in ['2023.2']:
+        STRESS_RE = STRESS_RE_V23
+    else:
+        STRESS_RE = STRESS_RE_other
     for match in STRESS_RE.finditer(output_file):
         step = int(match.group("step"))
         if step == 0:
@@ -111,7 +193,7 @@ def parse_stress_tensor_list(output_file):
         ]
         stress_tensor_list.append(stress_tensor)
 
-        pressure = match.group("pressure")
+        pressure = match.group("pressure") if match.groupdict().get("pressure") is not None else None
 
         steps_list.append({
             "step": step,
