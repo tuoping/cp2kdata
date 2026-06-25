@@ -626,7 +626,7 @@ class Cp2kOutput:
         # prepend the first cell
         if self.cp2k_info.restart is not True:
             self.all_cells = np.insert(
-                self.all_cells, 0, first_cell[0], axis=0)
+                self.all_cells, 0, first_cell[0]['cell'], axis=0)
 
     @cached_property
     def vib_freq_list(self):
